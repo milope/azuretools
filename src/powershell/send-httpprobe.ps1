@@ -169,17 +169,30 @@ function Send-HttpProbe {
 
 
         $stop = $false
+        $parsedip = [System.Net.IPAddress]::Any
+        $hostNameIsIP = [System.Net.IPAddress]::TryParse($Hostname, [ref] $parsedip)
 
         #Test 1: DNS
         $ips = $null
-        if($UseIPv4Only.IsPresent -and $UseIPv4Only) {
-            $ips = Resolve-DnsName -Name $Hostname -Type A -ErrorAction SilentlyContinue
+
+        if($hostNameIsIP) {
+            $ips = New-Object System.Collections.ArrayList
+            $ips.Add($parsedip) | Out-Null
         }
         else {
-            $ips = Resolve-DnsName -Name $Hostname -Type A_AAAA -ErrorAction SilentlyContinue
+            if($UseIPv4Only.IsPresent -and $UseIPv4Only) {
+                $ips = Resolve-DnsName -Name $Hostname -Type A -ErrorAction SilentlyContinue
+            }
+            else {
+                $ips = Resolve-DnsName -Name $Hostname -Type A_AAAA -ErrorAction SilentlyContinue
+            }
         }
         
-        if($null -eq $ips) {
+        if($hostNameIsIP) {
+            $test1Result = "Skipped"
+            $test1Output = "No DNS resolution needed for IP $($Hostname)"
+        }
+        elseif($null -eq $ips) {
             $stop = $true
             $test1Result = "Failed"
             $test1Output = "Could not resolve DNS Name $($Hostname)"
@@ -203,7 +216,12 @@ function Send-HttpProbe {
 
 
         #Test 2: Connectivity
-        $ip = $ips | Where-Object { $null -ne $_.IPAddress } | Select-Object -First 1 | % { [System.Net.IPAddress]::Parse($_.IPAddress) }
+        if($hostNameIsIP) {
+            $ip = $ips[0]
+        }
+        else {
+            $ip = $ips | Where-Object { $null -ne $_.IPAddress } | Select-Object -First 1 | % { [System.Net.IPAddress]::Parse($_.IPAddress) }
+        }
         $socket = New-Object System.Net.Sockets.Socket $ip.AddressFamily, ([System.Net.Sockets.SocketType]::Stream), ([System.Net.Sockets.ProtocolType]::Tcp)
         $ipendpoint = New-Object System.Net.IPEndPoint($ip, $Port)
         try {
