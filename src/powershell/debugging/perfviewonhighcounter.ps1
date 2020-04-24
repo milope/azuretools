@@ -105,7 +105,7 @@ $etwPath = Join-Path -Path "$($OutputPath)" -ChildPath "HighCpu_PerfView_$([Date
 $logFileStart = Join-Path -Path "$($OutputPath)" -ChildPath "HighCpu_PerfView_Start_$([DateTime]::UtcNow.ToString("yyyyMMdd_HHmmssfff")).log"
 $logFileStop = Join-Path -Path "$($OutputPath)" -ChildPath "HighCpu_PerfView_Stop_$([DateTime]::UtcNow.ToString("yyyyMMdd_HHmmssfff")).log"
 Write-Host "The threshold $($Threshold) was exeeded, running perfview to capture profile trace for $($CaptureTimeInSeconds) seconds"
-&$perfViewPath @("start", $etwPath, "/Zip:TRUE", "/Circular:1000", "/ThreadTime", "/AcceptEULA", "/ClrEvents:Default", "/KernelEvents:Default", "/LogFile:$($logFileStart)")
+&$perfViewPath @("start", $etwPath, "/Zip:TRUE", "/CircularMB:1024", "/ThreadTime", "/AcceptEULA", "/ClrEvents:Default", "/KernelEvents:Default", "/DotNetCalls", "/NoGui", "/LogFile:$($logFileStart)")
 Start-Sleep -Seconds $CaptureTimeInSeconds
 &$perfViewPath @("stop", "/LogFile:$($logFileStop)")
 Write-Host -NoNewline "The capture was completed, merging final file, this will take some time..."
