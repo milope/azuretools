@@ -25,7 +25,7 @@ SOFTWARE.
 #>
 
 <# BIG NOTE: This automatically accepts the PerfView EULA, it is highly
-encouraged, that you review the PerfView EULA prior to using this script #>
+encouraged that you review the PerfView EULA prior to using this script #>
 
 [Cmdletbinding()]
 param (
@@ -108,7 +108,7 @@ Write-Host "The threshold $($Threshold) was exeeded, running perfview to capture
 &$perfViewPath @("start", $etwPath, "/Zip:TRUE", "/Circular:1000", "/ThreadTime", "/AcceptEULA", "/ClrEvents:Default", "/KernelEvents:Default", "/LogFile:$($logFileStart)")
 Start-Sleep -Seconds $CaptureTimeInSeconds
 &$perfViewPath @("stop", "/LogFile:$($logFileStop)")
-Write-Host -NoNewline "The capture was completed, mergin final file, this will take some time..."
+Write-Host -NoNewline "The capture was completed, merging final file, this will take some time..."
 $finalFile = [String]::Empty
 while($true) {
     try {
