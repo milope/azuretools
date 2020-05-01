@@ -36,7 +36,7 @@ Write-Host "[$([DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fff"))] Installi
 
 # EVENT HUB PYTHON SDK
 Write-Host "[$([DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fff"))] Installing Event Hubs Python SDK." | Out-File -FilePath $logFile -Append
-pip install azure-eventhub --pre
+pip install azure-eventhub --pre -q
 Write-Host "[$([DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fff"))] Restoring Progress." | Out-File -FilePath $logFile -Append
 $ProgressPreference = $temp
 Write-Host "[$([DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fff"))] Complete." | Out-File -FilePath $logFile -Append
