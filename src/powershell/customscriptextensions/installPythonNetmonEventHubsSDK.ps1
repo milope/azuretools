@@ -1,4 +1,5 @@
 # PYTHON
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 $logFile = "$([DateTime]::UtcNow.ToString("yyyyMMdd_HHmmss"))_pysdk_nmon.log"
 Write-Host "[$([DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fff"))] Forcing TLS 1.2" | Out-File -FilePath $logFile
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
