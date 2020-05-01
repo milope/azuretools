@@ -51,3 +51,5 @@ pip install azure-eventhub --pre | Out-File -FilePath $logFile -Append
 Write-Log -Message "Restoring Progress."-LogFile $logFile
 $ProgressPreference = $temp
 Write-Log -Message "Complete."-LogFile $logFile 
+
+[Environment]::Exit(0)
