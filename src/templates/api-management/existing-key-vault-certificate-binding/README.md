@@ -1,3 +1,5 @@
+#Template: Create Azure Key Vault-bound API Management Service given an existing Azure Key Vault and Certificate
+
 This particular template is a sample where the following takes place.
 
 1.  A blank API Management service is created with a System managed identity.
