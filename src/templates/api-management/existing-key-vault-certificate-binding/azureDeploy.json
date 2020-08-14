@@ -151,7 +151,7 @@
                     ]
                 }
             },
-            "comments": "Step 2A: Now that APIM exists, use its tenant information to set the access policies if Key Vault is in a different resource group as APIM"
+            "comments": "Step 2B: Now that APIM exists, use its tenant information to set the access policies if Key Vault is in a different resource group as APIM"
         },
         {
             "apiVersion": "[variables('resourceGroupApiVersion')]",
