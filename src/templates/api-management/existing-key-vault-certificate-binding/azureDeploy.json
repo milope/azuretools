@@ -1,0 +1,204 @@
+{
+    "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "apimServiceName": {
+            "type": "string",
+            "minLength": 3,
+            "metadata": {
+                "description": "Specify the API Management Service Name"
+            }
+        },
+        "publisherName": {
+            "type": "string",
+            "minLength": 3,
+            "metadata": {
+                "description": "Specify the API Management Service Publisher Name"
+            }
+        },
+        "publisherEMail": {
+            "type": "string",
+            "minLength": 3,
+            "metadata": {
+                "description": "Specify the API Management Service Publisher E-Mail"
+            }
+        },
+        "sku": {
+            "type": "string",
+            "allowedValues": ["Developer", "Standard", "Premium"],
+            "defaultValue": "Developer",
+            "metadata": {
+                "description": "The pricing tier for the API Management Service"
+            }
+        },
+        "capacity": {
+            "type": "int",
+            "defaultValue": 1,
+            "metadata": {
+                "description": "The instance size for the API Management Service"
+            }
+        },
+        "proxyHostname": {
+            "type": "string",
+            "minLength": 1,
+            "metadata": {
+                "description": "Specifies the hostname for APIM"
+            }
+        },
+        "keyVaultResourceGroup": {
+            "type": "string",
+            "defaultValue": "[resourceGroup().name]",
+            "metadata": {
+                "description": "Specifies the resource group that contains the key vault where we will use the certificate for APIM's proxy role, don't specify to use the same resource Group as APIM"
+            }
+        },
+        "keyVaultName": {
+            "type": "string",
+            "minLength": 3,
+            "metadata": {
+                "description": "Specify the Key Vault name"
+            }
+        },
+        "secretName": {
+            "type": "string",
+            "minLength": 3,
+            "metadata": {
+                "description": "Specify the Key Vault Secret name"
+            }
+        }
+    },
+    "variables": {
+        "apimApiVersion": "2019-12-01-preview",
+        "resourceGroupApiVersion": "2020-06-01",
+        "keyVaultApiVersion": "2019-09-01",
+        "secretResourceId": "[resourceId(parameters('keyVaultResourceGroup'), 'Microsoft.KeyVault/vaults/secrets', parameters('keyVaultName'), parameters('secretName'))]",
+        "keyVaultInSameResourceGroup": "[if(equals(parameters('keyVaultResourceGroup'), resourceGroup().name), 'yes', 'no')]",
+        "keyVaultDeploymentName": "[concat('deployment-ap-', uniqueString(parameters('keyVaultResourceGroup')))]"
+    },
+    "resources": [
+        {
+            "name": "[parameters('apimServiceName')]",
+            "type": "Microsoft.ApiManagement/service",
+            "apiVersion": "[variables('apimApiVersion')]",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "[parameters('sku')]",
+                "capacity": "[parameters('capacity')]"
+            },
+            "properties": {
+                "publisherEmail": "[parameters('publisherEMail')]",
+                "publisherName": "[parameters('publisherName')]"
+            },
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "comments": "Step 1: Create APIM"
+        },
+        {
+            "condition": "[equals(variables('keyVaultInSameResourceGroup'), 'yes')]",
+            "apiVersion": "[variables('keyVaultApiVersion')]",
+            "type": "Microsoft.KeyVault/vaults/accessPolicies",
+            "name": "[concat(parameters('keyVaultName'), '/replace')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName'))]"
+            ],
+            "properties": {
+                "accessPolicies": [
+                    {
+                        "tenantId": "[reference(concat(resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName')), '/providers/Microsoft.ManagedIdentity/Identities/default'), '2018-11-30').tenantId]",
+                        "objectId": "[reference(concat(resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName')), '/providers/Microsoft.ManagedIdentity/Identities/default'), '2018-11-30').principalId]",
+                        "permissions": {
+                            "secrets": ["get"]
+                        }
+                    }
+                ]
+            },
+            "comments": "Step 2A: Now that APIM exists, use its tenant information to set the access policies if Key Vault is in the same resource group as APIM"
+        },
+        {
+            "condition": "[equals(variables('keyVaultInSameResourceGroup'), 'no')]",
+            "apiVersion": "[variables('resourceGroupApiVersion')]",
+            "type": "Microsoft.Resources/deployments",
+            "resourceGroup": "[parameters('keyVaultResourceGroup')]",
+            "name": "[variables('keyVaultDeploymentName')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName'))]"
+            ],
+            "properties": {
+                "mode": "Incremental",
+                "template": {
+                    "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {},
+                    "variables": {},
+                    "resources": [
+                        {
+                            "apiVersion": "[variables('keyVaultApiVersion')]",
+                            "type": "Microsoft.KeyVault/vaults/accessPolicies",
+                            "name": "[concat(parameters('keyVaultName'), '/replace')]",
+                            "properties": {
+                                "accessPolicies": [
+                                    {
+                                        "tenantId": "[reference(concat(resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName')), '/providers/Microsoft.ManagedIdentity/Identities/default'), '2018-11-30').tenantId]",
+                                        "objectId": "[reference(concat(resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName')), '/providers/Microsoft.ManagedIdentity/Identities/default'), '2018-11-30').principalId]",
+                                        "permissions": {
+                                            "secrets": ["get"]
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            },
+            "comments": "Step 2A: Now that APIM exists, use its tenant information to set the access policies if Key Vault is in a different resource group as APIM"
+        },
+        {
+            "apiVersion": "[variables('resourceGroupApiVersion')]",
+            "type": "Microsoft.Resources/deployments",
+            "resourceGroup": "[resourceGroup().name]",
+            "name": "[concat('apim-kv-deployment-', uniqueString(resourceGroup().id))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service', parameters('apimServiceName'))]",
+                "[resourceId('Microsoft.KeyVault/vaults/accessPolicies', parameters('keyVaultName'), 'apim-identity-policy')]",
+                "[variables('keyVaultDeploymentName')]"
+            ],
+            "properties": {
+                "mode": "Incremental",
+                "template": {
+                    "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {},
+                    "variables": {},
+                    "resources": [
+                        {
+                            "apiVersion": "[variables('apimApiVersion')]",
+                            "name": "[parameters('apimServiceName')]",
+                            "type": "Microsoft.ApiManagement/service",
+                            "location": "[resourceGroup().location]",
+                            "sku": {
+                                "name": "[parameters('sku')]",
+                                "capacity": "[parameters('capacity')]"
+                            },
+                            "properties": {
+                                "publisherEmail": "[parameters('PublisherEMail')]",
+                                "publisherName": "[parameters('PublisherName')]",
+                                "hostnameConfigurations": [
+                                    {
+                                        "type": "Proxy",
+                                        "hostName": "[parameters('proxyHostname')]",
+                                        "keyVaultId": "[reference(variables('secretResourceId'), variables('keyVaultApiVersion')).secretUriWithVersion]"
+                                    }
+                                ]
+                            },
+                            "identity": {
+                                "type": "SystemAssigned"
+                            }
+                        }
+                    ]
+                }
+            },
+            "comments": "Step 3: Add the hostname configuration to APIM pointing to the Secret"
+        }
+    ]
+}
