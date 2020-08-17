@@ -1,0 +1,89 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "resource-prefix": {
+            "type": "string"
+        }
+    },
+    "variables": {
+        "vnet-name": "[concat(parameters('resource-prefix'), '-vnet')]",
+        "subnet-name": "default",
+        "subnet-resource-name": "[concat(variables('vnet-name'), '/', variables('subnet-name'))]",
+        "public-ip-name": "[concat(parameters('resource-prefix'), '-vnet')]",
+        "nic-name": "[concat(parameters('resource-prefix'), '-vnet')]",
+        "network-api-version": "2020-06-01"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "[variables('network-api-version')]",
+            "name": "[variables('vnet-name')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "10.0.0.0/24"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('subnet-name')]",
+                        "properties": {
+                            "addressPrefix": "10.0.0.0/24"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "[variables('network-api-version')]",
+            "name": "[variables('subnet-resource-name')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vnet-name'))]"
+            ],
+            "properties": {
+                "addressPrefix": "10.0.0.0/24"
+            }
+        },
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "[variables('network-api-version')]",
+            "name": "[variables('public-ip-name')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "publicIPAddressVersion":"IPv4",
+                "publicIPAllocationMethod":"Dynamic"
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "[variables('network-api-version')]",
+            "name": "[variables('nic-name')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnet-name'), variables('subnet-name'))]",
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('public-ip-name'))]"
+            ],
+            "properties": {
+                "primary":true,
+                "ipConfigurations":[
+                    {
+                        "name": "ipconfig",
+                        "properties": {
+                            "primary": true,
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnet-name'), variables('subnet-name'))]"
+                            },
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('public-ip-name'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ]
+}
