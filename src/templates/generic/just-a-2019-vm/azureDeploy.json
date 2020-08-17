@@ -1,0 +1,149 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "resource-prefix": {
+            "type": "string"
+        },
+        "vm-username": {
+            "type": "string"
+        },
+        "vm-password": {
+            "type": "securestring"
+        }
+    },
+    "variables": {
+        "vnet-name": "[concat(parameters('resource-prefix'), '-vnet')]",
+        "subnet-name": "default",
+        "subnet-resource-name": "[concat(variables('vnet-name'), '/', variables('subnet-name'))]",
+        "public-ip-name": "[concat(parameters('resource-prefix'), '-publicip')]",
+        "nic-name": "[concat(parameters('resource-prefix'), '-nic')]",
+        "vm-name": "[concat(parameters('resource-prefix'), '-vm')]",
+        "machine-name": "[concat(parameters('resource-prefix'), 'vm')]",
+        "network-api-version": "2020-06-01",
+        "compute-api-version": "2020-06-01"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "[variables('network-api-version')]",
+            "name": "[variables('vnet-name')]",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "Environment": "Test"
+            },
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "10.0.0.0/24"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('subnet-name')]",
+                        "properties": {
+                            "addressPrefix": "10.0.0.0/24"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "[variables('network-api-version')]",
+            "name": "[variables('subnet-resource-name')]",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "Environment": "Test"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vnet-name'))]"
+            ],
+            "properties": {
+                "addressPrefix": "10.0.0.0/24"
+            }
+        },
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "[variables('network-api-version')]",
+            "name": "[variables('public-ip-name')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "publicIPAddressVersion":"IPv4",
+                "publicIPAllocationMethod":"Dynamic"
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "[variables('network-api-version')]",
+            "name": "[variables('nic-name')]",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "Environment": "Test"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnet-name'), variables('subnet-name'))]",
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('public-ip-name'))]"
+            ],
+            "properties": {
+                "ipConfigurations":[
+                    {
+                        "name": "ipconfig",
+                        "properties": {
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnet-name'), variables('subnet-name'))]"
+                            },
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('public-ip-name'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "[variables('compute-api-version')]",
+            "name": "[variables('vm-name')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', variables('nic-name'))]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "Standard_D4s_v3"
+                },
+                "storageProfile": {
+                    "osDisk": {
+                        "createOption": "FromImage",
+                        "managedDisk": {
+                            "storageAccountType": "Premium_LRS"
+                        }
+                    },
+                    "imageReference": {
+                        "publisher": "MicrosoftWindowsServer",
+                        "offer": "WindowsServer",
+                        "sku": "2019-Datacenter-with-Containers",
+                        "version": "latest"
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('nic-name'))]"
+                        }
+                    ]
+                },
+                "osProfile": {
+                    "computerName": "[variables('machine-name')]",
+                    "adminUsername": "[parameters('vm-username')]",
+                    "adminPassword": "[parameters('vm-password')]",
+                    "windowsConfiguration": {
+                        "enableAutomaticUpdates": true,
+                        "provisionVmAgent": true
+                    }
+                }
+            }
+        }
+    ]
+}
