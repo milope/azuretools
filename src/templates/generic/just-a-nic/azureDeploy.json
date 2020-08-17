@@ -77,12 +77,10 @@
                 "[resourceId('Microsoft.Network/publicIPAddresses', variables('public-ip-name'))]"
             ],
             "properties": {
-                "primary":true,
                 "ipConfigurations":[
                     {
                         "name": "ipconfig",
                         "properties": {
-                            "primary": true,
                             "subnet": {
                                 "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnet-name'), variables('subnet-name'))]"
                             },
