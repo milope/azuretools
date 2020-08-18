@@ -20,13 +20,15 @@
         "nic-name": "[concat(parameters('resource-prefix'), '-nic')]",
         "vm-name": "[concat(parameters('resource-prefix'), '-vm')]",
         "machine-name": "[concat(parameters('resource-prefix'), 'vm')]",
-        "network-api-version": "2020-06-01",
-        "compute-api-version": "2020-06-01"
+        "vnet-api-version": "2019-09-01",
+        "nic-api-version": "2019-07-01",
+        "compute-api-version": "2019-07-01",
+        "public-ip-api-version": "2019-02-01"
     },
     "resources": [
         {
             "type": "Microsoft.Network/virtualNetworks",
-            "apiVersion": "[variables('network-api-version')]",
+            "apiVersion": "[variables('vnet-api-version')]",
             "name": "[variables('vnet-name')]",
             "location": "[resourceGroup().location]",
             "tags": {
@@ -50,7 +52,7 @@
         },
         {
             "type": "Microsoft.Network/virtualNetworks/subnets",
-            "apiVersion": "[variables('network-api-version')]",
+            "apiVersion": "[variables('vnet-api-version')]",
             "name": "[variables('subnet-resource-name')]",
             "location": "[resourceGroup().location]",
             "tags": {
@@ -65,7 +67,7 @@
         },
         {
             "type": "Microsoft.Network/publicIPAddresses",
-            "apiVersion": "[variables('network-api-version')]",
+            "apiVersion": "[variables('public-ip-api-version')]",
             "name": "[variables('public-ip-name')]",
             "location": "[resourceGroup().location]",
             "properties": {
@@ -75,7 +77,7 @@
         },
         {
             "type": "Microsoft.Network/networkInterfaces",
-            "apiVersion": "[variables('network-api-version')]",
+            "apiVersion": "[variables('nic-api-version')]",
             "name": "[variables('nic-name')]",
             "location": "[resourceGroup().location]",
             "tags": {
