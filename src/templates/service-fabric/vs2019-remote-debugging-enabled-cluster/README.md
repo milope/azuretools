@@ -1,5 +1,11 @@
 # Template: Create an Azure Service Fabric Cluster With Visual Studio 2019 Remote Debugging Enabled
 
+[![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fservice-fabric%2fvs2019-remote-debugging-enabled-cluster%2fazureDeploy.json)
+[![Deploy To Azure US Gov](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazuregov.svg?sanitize=true)](https://portal.azure.us/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fservice-fabric%2fvs2019-remote-debugging-enabled-cluster%2fazureDeploy.json)
+[![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fservice-fabric%2fvs2019-remote-debugging-enabled-cluster%2fazureDeploy.json)
+
+__IMPORTANT NOTE:__ Please note this template is for EDUCATIONAL PURPOSES ONLY and is provided AS IS without any warranty. Please note Microsoft may not support issues caused by using this template nor may support the template itself. Please file an issue against this repo and I will be happy to take a look.
+
 ## Create a Server and Client Remote Debugging Certificates
 
 Using the [createRemoteDebuggingCert.ps1](https://raw.githubusercontent.com/milope/azuretools/master/src/templates/service-fabric/vs2019-remote-debugging-enabled-cluster/createRemoteDebuggingCert.ps1) cmdlet, we can create or use an existing Azure Resource Group and Azure Key Vault and include two certificates, one for the client to authentication and another for the server to host. This cmdlet is meant to be idempotent.
