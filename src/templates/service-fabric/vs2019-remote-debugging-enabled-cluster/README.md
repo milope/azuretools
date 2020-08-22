@@ -159,7 +159,7 @@ From the official [5-VM-Windows-1-NodeTypes-Secure](https://github.com/Azure-Sam
 ```
 
 4. In the **Microsoft.Compute/virtualMachineScaleSets resource**, we will perform 3 changes:
-  1. In the **properties > virutalMachineProfile > extensionProfile > extensions**, we will add the Visual Studio Remote Debugger extension as follows:
+  - In the **properties > virutalMachineProfile > extensionProfile > extensions**, we will add the Visual Studio Remote Debugger extension as follows:
 
 ```
 {
@@ -181,8 +181,7 @@ From the official [5-VM-Windows-1-NodeTypes-Secure](https://github.com/Azure-Sam
     }
 }
 ```
-4. 
-  2. In the **properties > virtualMachineProfile > networkProfile > networkInterfaceConfigurations > properties > ipConfigurations > properties > loadBalancerInboundNatPools** section, add the 4 NatPools created on Step 3 as shown below:
+ - In the **properties > virtualMachineProfile > networkProfile > networkInterfaceConfigurations > properties > ipConfigurations > properties > loadBalancerInboundNatPools** section, add the 4 NatPools created on Step 3 as shown below:
 
 ```
 {
@@ -198,9 +197,8 @@ From the official [5-VM-Windows-1-NodeTypes-Secure](https://github.com/Azure-Sam
     "id": "[variables('lbNatPoolID4')]"
 }
 ```
-4. 
-  3. In the **properties > virtualMachineProfile > osProfile > secrets** add the remote debug server certificate as follows:
-    1. If the Key Vault containing the Remote Debugging certificate is **different** from the Key Vault containing the Service Fabric cluster certificate:
+ - In the **properties > virtualMachineProfile > osProfile > secrets** add the remote debug server certificate as follows:
+    - If the Key Vault containing the Remote Debugging certificate is **different** from the Key Vault containing the Service Fabric cluster certificate:
 
 ```
 {
@@ -216,9 +214,7 @@ From the official [5-VM-Windows-1-NodeTypes-Secure](https://github.com/Azure-Sam
 }
 ```
 
-4. 
-  3. 
-    2. If the Key Vault containing the remote debug certificate is **the same** as the Key Vault containing the Service Fabric cluster certificate, then in the same entry for the Service Fabric cluster certificate secret, add an extra vaultCertificate array element as shown below:
+  - If the Key Vault containing the remote debug certificate is **the same** as the Key Vault containing the Service Fabric cluster certificate, then in the same entry for the Service Fabric cluster certificate secret, add an extra vaultCertificate array element as shown below:
 
 ```
 "secrets": [
