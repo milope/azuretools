@@ -42,7 +42,7 @@ From the official [5-VM-Windows-1-NodeTypes-Secure](https://github.com/Azure-Sam
 	"value": "GEN-REMOTE-KEY-VAULT-ID"
 },
 "remoteDebugCertificateThumbprint": {
-  "value": "GEN-REMOTE-DEBUG-SERVER-CERTIFICATE-THUMBPRINT"
+	"value": "GEN-REMOTE-DEBUG-SERVER-CERTIFICATE-THUMBPRINT"
 },
 "remoteDebugCertificateUrl": {
 	"value": "GEN-REMOTE-DEBUG-SERVER-CERTIFICATE-SECRET-URL"
