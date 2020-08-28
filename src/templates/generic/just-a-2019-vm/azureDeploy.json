@@ -123,7 +123,7 @@
                 "networkProfile": {
                     "networkInterfaces": [
                         {
-                            "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('nic-name'))]"
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('nic-name'))]"
                         }
                     ]
                 },
