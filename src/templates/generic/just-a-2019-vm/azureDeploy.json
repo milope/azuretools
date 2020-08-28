@@ -31,9 +31,6 @@
             "apiVersion": "[variables('vnet-api-version')]",
             "name": "[variables('vnet-name')]",
             "location": "[resourceGroup().location]",
-            "tags": {
-                "Environment": "Test"
-            },
             "properties": {
                 "addressSpace": {
                     "addressPrefixes": [
@@ -77,9 +74,6 @@
             "apiVersion": "[variables('nic-api-version')]",
             "name": "[variables('nic-name')]",
             "location": "[resourceGroup().location]",
-            "tags": {
-                "Environment": "Test"
-            },
             "dependsOn": [
                 "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnet-name'), variables('subnet-name'))]",
                 "[resourceId('Microsoft.Network/publicIPAddresses', variables('public-ip-name'))]"
