@@ -15,7 +15,6 @@
     "variables": {
         "vnet-name": "[concat(parameters('resource-prefix'), '-vnet')]",
         "subnet-name": "default",
-        "subnet-resource-name": "[concat(variables('vnet-name'), '/', variables('subnet-name'))]",
         "public-ip-name": "[concat(parameters('resource-prefix'), '-publicip')]",
         "nic-name": "[concat(parameters('resource-prefix'), '-nic')]",
         "vm-name": "[concat(parameters('resource-prefix'), '-vm')]",
@@ -23,9 +22,36 @@
         "vnet-api-version": "2019-09-01",
         "nic-api-version": "2019-07-01",
         "compute-api-version": "2019-07-01",
-        "public-ip-api-version": "2019-02-01"
+        "public-ip-api-version": "2019-02-01",
+        "vnetId": "[resourceId(resourceGroup().name,'Microsoft.Network/virtualNetworks', variables('vnet-name'))]",
+        "subnetRef": "[concat(variables('vnetId'), '/subnets/', variables('subnet-name'))]"
     },
     "resources": [
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "[variables('nic-api-version')]",
+            "name": "[variables('nic-name')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnet-name'), variables('subnet-name'))]",
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('public-ip-name'))]"
+            ],
+            "properties": {
+                "ipConfigurations":[
+                    {
+                        "name": "ipconfig",
+                        "properties": {
+                            "subnet": {
+                                "id": "[variables('subnetRef')]"
+                            },
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('public-ip-name'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
         {
             "type": "Microsoft.Network/virtualNetworks",
             "apiVersion": "[variables('vnet-api-version')]",
@@ -48,18 +74,6 @@
             }
         },
         {
-            "type": "Microsoft.Network/virtualNetworks/subnets",
-            "apiVersion": "[variables('vnet-api-version')]",
-            "name": "[variables('subnet-resource-name')]",
-            "location": "[resourceGroup().location]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/virtualNetworks', variables('vnet-name'))]"
-            ],
-            "properties": {
-                "addressPrefix": "10.0.0.0/24"
-            }
-        },
-        {
             "type": "Microsoft.Network/publicIPAddresses",
             "apiVersion": "[variables('public-ip-api-version')]",
             "name": "[variables('public-ip-name')]",
@@ -67,31 +81,6 @@
             "properties": {
                 "publicIPAddressVersion":"IPv4",
                 "publicIPAllocationMethod":"Dynamic"
-            }
-        },
-        {
-            "type": "Microsoft.Network/networkInterfaces",
-            "apiVersion": "[variables('nic-api-version')]",
-            "name": "[variables('nic-name')]",
-            "location": "[resourceGroup().location]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnet-name'), variables('subnet-name'))]",
-                "[resourceId('Microsoft.Network/publicIPAddresses', variables('public-ip-name'))]"
-            ],
-            "properties": {
-                "ipConfigurations":[
-                    {
-                        "name": "ipconfig",
-                        "properties": {
-                            "subnet": {
-                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnet-name'), variables('subnet-name'))]"
-                            },
-                            "publicIPAddress": {
-                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('public-ip-name'))]"
-                            }
-                        }
-                    }
-                ]
             }
         },
         {
