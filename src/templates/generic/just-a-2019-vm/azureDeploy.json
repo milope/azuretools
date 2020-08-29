@@ -13,12 +13,12 @@
         }
     },
     "variables": {
-        "vnet-name": "[concat(parameters('resource-prefix'), '-vnet')]",
+        "vnet-name": "[concat('vnet-', parameters('resource-prefix'))]",
         "subnet-name": "default",
-        "public-ip-name": "[concat(parameters('resource-prefix'), '-publicip')]",
-        "nic-name": "[concat(parameters('resource-prefix'), '-nic')]",
-        "vm-name": "[concat(parameters('resource-prefix'), '-vm')]",
-        "machine-name": "[concat(parameters('resource-prefix'), 'vm')]",
+        "public-ip-name": "[concat('pip-', parameters('resource-prefix'))]",
+        "nic-name": "[concat('nic-', parameters('resource-prefix'))]",
+        "vm-name": "[concat('vm-', parameters('resource-prefix'))]",
+        "machine-name": "[concat('vm', parameters('resource-prefix'))]",
         "vnet-api-version": "2019-09-01",
         "nic-api-version": "2019-07-01",
         "compute-api-version": "2019-07-01",
