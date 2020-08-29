@@ -33,7 +33,7 @@
             "name": "[variables('nic-name')]",
             "location": "[resourceGroup().location]",
             "dependsOn": [
-                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnet-name'), variables('subnet-name'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vnet-name'))]",
                 "[resourceId('Microsoft.Network/publicIPAddresses', variables('public-ip-name'))]"
             ],
             "properties": {
