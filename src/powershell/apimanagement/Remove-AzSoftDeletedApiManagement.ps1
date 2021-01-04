@@ -105,7 +105,7 @@ function Remove-AzSoftDeletedApiManagement {
                     }
                 }
                 catch {
-                    if(-not $_.Exception.Message.StartsWith("CorrelationId")) {
+                    if(-not $_.Exception.Message.StartsWith("$([Environment]::NewLine)CorrelationId")) {
                         throw
                     }
                 }
