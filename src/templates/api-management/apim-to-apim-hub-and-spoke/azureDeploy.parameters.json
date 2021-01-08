@@ -1,0 +1,24 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "resourcePrefix": {
+            "value": "GEN-RESOURCE-PREFIX"
+        },
+        "vmUsername": {
+            "value": "GET-USERNAME"
+        },
+        "vmPassword": {
+            "value": "GET-PASSWORD"
+        },
+        "apimPublisherName": {
+            "value": "GEN-APIM-PUBLISHER-NAME"
+        },
+        "apimPublisherEMail": {
+            "value": "GEN-APIM-PUBLISHER-EMAIL"
+        },
+        "yourIP": {
+            "value": "GEN-YOUR-IP"
+        }
+    }
+}

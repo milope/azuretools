@@ -1,0 +1,2286 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "resourcePrefix": {
+            "type": "string",
+            "metadata": {
+                "description": "All resources will be prefixed with this prefix"
+            },
+            "defaultValue": "milope"
+        },
+        "vmUsername": {
+            "type": "string",
+            "metadata": {
+                "description": "This will be the VM username"
+            }
+        },
+        "vmPassword": {
+            "type": "securestring",
+            "metadata": {
+                "description": "This will be the VM password"
+            }
+        },
+        "apimPublisherName": {
+            "type": "string",
+            "metadata": {
+                "description": "This will be the APIM Publisher Name"
+            }
+        },
+        "apimPublisherEMail": {
+            "type": "string",
+            "metadata": {
+                "description": "This will be the APIM Publisher E-Mail"
+            }
+        },
+        "yourIP": {
+            "type": "string",
+            "metadata": {
+                "description": "This will be your IP for NSG purposes"
+            }
+        }
+    },
+    "variables": {
+        "resourcePrefix": "[toLower(replace(parameters('resourcePrefix'), ' ', ''))]",
+        "clientVnetNsgName": "[concat(variables('resourcePrefix'), '-nsg-client-vm')]",
+        "blankNsgName": "[concat(variables('resourcePrefix'), '-nsg-blank')]",
+        "apimNsgName": "[concat(variables('resourcePrefix'), '-nsg-apim')]",
+        "clientVnetName": "[concat(variables('resourcePrefix'), '-vnet-spoke-client-vm')]",
+        "apimVnetName": "[concat(variables('resourcePrefix'), '-vnet-spoke-apim')]",
+        "firewallVnetName": "[concat(variables('resourcePrefix'), '-vnet-hub-fw')]",
+        "defaultSubnetName": "default",
+        "firewallSubnetName": "AzureFirewallSubnet",
+        "firewallVnetAddressRange": "10.0.0.0/24",
+        "clientVnetAddressRange": "10.0.1.0/24",
+        "apimVnetAddressRange": "10.0.2.0/24",
+        "clientVnetSubnetName": "[concat(variables('clientVnetName'), '/', variables('defaultSubnetName'))]",
+        "apimVnetSubnetName": "[concat(variables('apimVnetName'), '/', variables('defaultSubnetName'))]",
+        "firewallVnetSubnetName": "[concat(variables('firewallVnetName'), '/', variables('firewallSubnetName'))]",
+        "firewallHubToApimSpokePeeringName": "[concat(variables('firewallVnetName'), '/peering-fw-hub-to-apim-spoke')]",
+        "firewallHubToVmSpokePeeringName": "[concat(variables('firewallVnetName'), '/peering-fw-hub-to-client-vm-spoke')]",
+        "apimSpokeToFirewallHubPeeringName": "[concat(variables('apimVnetName'), '/peering-apim-spoke-to-fw-hub')]",
+        "clientVmSpokeToFirewallHubPeeringName": "[concat(variables('clientVnetName'), '/peering-client-vm-spoke-to-fw-hub')]",
+        "clientVmPublicIpName": "[concat(variables('resourcePrefix'), '-client-vm-public-ip')]",
+        "clientVmNicName": "[concat(variables('resourcePrefix'), '-client-vm-nic')]",
+        "clientVmDnsName": "[concat(variables('resourcePrefix'), 'clientvm')]",
+        "clientVmResourceName": "[concat(variables('resourcePrefix'), '-client-vm')]",
+        "clientVmMachineName": "[concat(variables('resourcePrefix'), 'clientvm')]",
+        "firewallName": "[concat(variables('resourcePrefix'), '-firewall')]",
+        "firewallPublicIpName": "[concat(variables('resourcePrefix'), '-firewall-public-ip')]",
+        "firewallDnsName": "[concat(variables('resourcePrefix'), 'fw')]",
+        "clientApimName": "[concat(variables('resourcePrefix'), '-client-apim')]",
+        "routeTableName": "[concat(variables('resourcePrefix'), '-client-route-table')]",
+        "yourIPAsRange": "[concat(parameters('yourIP'), '/32')]",
+        "appGWPublicIPName": "[concat(variables('resourcePrefix'), '-appgw-public-ip')]",
+        "appGWPublicDns": "[concat(variables('resourcePrefix'), 'appgw')]",
+        "resourceGroupLocationNoSpaces": "[replace(resourceGroup().location, ' ', '')]",
+        "resourceGroupLocationCaseInsensitive": "[toLower(variables('resourceGroupLocationNoSpaces'))]",
+        "apimGlobalControlPlaneIPs": {
+            "AzureCloud": [
+                "104.214.19.224/32",
+                "52.162.110.80/32"
+            ],
+            "AzureUSGovernment": [
+                "52.127.42.160/32",
+                "52.127.34.192/32"
+            ],
+            "AzureChinaCloud": [
+                "139.217.51.16/32",
+                "39.217.171.176/32"
+            ]
+
+        },
+        "apimNonGlobalControlPlaneIPs": {
+			"westcentralus": "52.253.135.58/32",
+			"koreacentral": "40.82.157.167/32",
+			"ukwest": "51.137.136.0/32",
+			"japanwest": "40.81.185.8/32",
+			"northcentralus": "40.81.47.216/32",
+			"uksouth": "51.145.56.125/32",
+			"westindia": "40.81.89.24/32",
+			"eastus": "52.224.186.99/32",
+			"westeurope": "51.145.179.78/32",
+			"japaneast": "52.140.238.179/32",
+			"francecentral": "40.66.60.111/32",
+			"canadaeast": "52.139.80.117/32",
+			"uaenorth": "20.46.144.85/32",
+			"brazilsouth": "191.233.24.179/32",
+			"brazilsoutheast": "191.232.18.181/32",
+			"southeastasia": "40.90.185.46/32",
+			"southafricanorth": "102.133.130.197/32",
+			"canadacentral": "52.139.20.34/32",
+			"koreasouth": "40.80.232.185/32",
+			"centralindia": "13.71.49.1/32",
+			"westus": "13.64.39.16/32",
+			"australiasoutheast": "20.40.160.107/32",
+			"australiacentral": "20.37.52.67/32",
+			"southindia": "20.44.33.246/32",
+			"centralus": "13.86.102.66/32",
+			"australiaeast": "20.40.125.155/32",
+			"westus2": "51.143.127.203/32",
+			"eastus2euap": "52.253.229.253/32",
+			"centraluseuap": "52.253.159.160/32",
+			"southcentralus": "20.188.77.119/32",
+			"eastus2": "20.44.72.3/32",
+			"northeurope": "52.142.95.35/32",
+			"eastasia": "52.139.152.27/32",
+			"francesouth": "20.39.80.2/32",
+			"switzerlandwest": "51.107.96.8/32",
+			"australiacentral2": "20.39.99.81/32",
+			"uaecentral": "20.37.81.41/32",
+			"switzerlandnorth": "51.107.0.91/32",
+			"southafricawest": "102.133.0.79/32",
+			"germanywestcentral": "51.116.96.0/32",
+			"germanynorth": "51.116.0.0/32",
+			"norwayeast": "51.120.2.185/32",
+			"norwaywest": "51.120.130.134/32",
+			"chinanorth": "40.125.137.220/32",
+			"chinaeast": "40.126.120.30/32",
+			"chinanorth2": "40.73.41.178/32",
+			"chinaeast2": "40.73.104.4/32",
+			"usgovvirginia": "52.227.222.92/32",
+			"usgoviowa": "13.73.72.21/32",
+			"usgovarizona": "52.244.32.39/32",
+			"usgovtexas": "52.243.154.118/32",
+			"usdodcentral": "52.182.32.132/32",
+			"usdodeast": "52.181.32.192"
+		},
+        "apimControlPlaneIPs": [
+            "[variables('apimGlobalControlPlaneIPs')[environment().name][0]]",
+            "[variables('apimGlobalControlPlaneIPs')[environment().name][1]]",
+            "[variables('apimNonGlobalControlPlaneIPs')[variables('resourceGroupLocationCaseInsensitive')]]"
+        ],
+        "serviceEndpoints": [
+            {
+                "service": "Microsoft.Storage"
+            },
+            {
+                "service": "Microsoft.Sql"
+            },
+            {
+                "service": "Microsoft.KeyVault"
+            },
+            {
+                "service": "Microsoft.EventHub"
+            }
+        ],
+        "destinationVnetName": "[concat(variables('resourcePrefix'), '-destination-vnet')]",
+        "appGWSubnetName": "appgw-subnet",
+        "destinationApimSubnetName": "apim-subnet",
+        "appGWSubnetResourceName": "[concat(variables('destinationVnetName'), '/', variables('appGWSubnetName'))]",
+        "destinationApimSubnetResourceName": "[concat(variables('destinationVnetName'), '/', variables('destinationApimSubnetName'))]",
+        "appGWNSGName": "[concat(variables('resourcePrefix'), '-appgw-nsg')]",
+        "destinationApimName": "[concat(variables('resourcePrefix'), '-destination-apim')]",
+        "destinationApimApiName": "mock-api",
+        "destinationApimApiPath": "mockapi",
+        "appGWName": "[concat(variables('resourcePrefix'), '-appgw')]",
+        "logAnalyticsName": "[concat(variables('resourcePrefix'), '-loganalytics')]",
+        "dnsZoneName": "[if(equals(environment().name, 'AzureCloud'), 'azure-api.net', if(equals(environment().name, 'AzureUSGovernment'), 'azure-api.us', 'azure-api.cn'))]",
+        "dnsZoneLinkApimVnetName": "[concat(variables('dnsZoneName'), '/apim-spoke-vnet-link')]",
+        "dnsZoneLinkClientVmVnetName": "[concat(variables('dnsZoneName'), '/clientvm-spoke-vnet-link')]",
+        "dnsZoneLinkFirewallVnetName": "[concat(variables('dnsZoneName'), '/firewall-hub-vnet-link')]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Network/privateDnsZones",
+            "apiVersion": "2018-09-01",
+            "comments": "Creating a private DNS Zone so the client VM can resolve the APIM domain automatically",
+            "dependsOn": [],
+            "location": "global",
+            "name": "[variables('dnsZoneName')]",
+            "properties": {
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2020-05-01",
+            "comments": "This will be the a generic NSG just to ensure traffic is internal only.",
+            "location": "[resourceGroup().location]",
+            "name": "[variables('blankNsgName')]",
+            "dependsOn":[],
+            "properties": {
+                "securityRules": [
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2020-05-01",
+            "comments": "This will be the NSG for the client VM.",
+            "location": "[resourceGroup().location]",
+            "name": "[variables('clientVnetNsgName')]",
+            "dependsOn":[],
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "allow-your-ip",
+                        "properties": {
+                            "access": "Allow",
+                            "description": "This rule is to allow your public IP through RDP or SSH port.",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "destinationPortRanges": ["3389", "22"],
+                            "sourcePortRange": "*",
+                            "sourceAddressPrefix": "[variables('yourIPAsRange')]",
+                            "direction": "Inbound",
+                            "priority": 100,
+                            "protocol": "*"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2020-05-01",
+            "comments": "This will be an APIM VNET that will only allow internal connections.",
+            "location": "[resourceGroup().location]",
+            "name": "[variables('apimNsgName')]",
+            "dependsOn":[],
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "allow-apim-control-plane",
+                        "properties": {
+                            "access": "Allow",
+                            "description": "This rule is to allow API Management Control Plance operations.",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "destinationPortRange": "3443",
+                            "sourcePortRange": "*",
+                            "sourceAddressPrefix": "ApiManagement",
+                            "direction": "Inbound",
+                            "priority": 101,
+                            "protocol": "*"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2020-05-01",
+            "comments": "This VNET will belong to the client VM",
+            "location": "[resourceGroup().location]",
+            "name": "[variables('clientVnetName')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('clientVnetNsgName'))]"
+            ],
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[variables('clientVnetAddressRange')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('defaultSubnetName')]",
+                        "properties": {
+                            "addressPrefix": "[variables('clientVnetAddressRange')]",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('clientVnetNsgName'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2020-05-01",
+            "comments": "This VNET will belong to APIM",
+            "location": "[resourceGroup().location]",
+            "name": "[variables('apimVnetName')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('apimNsgName'))]"
+            ],
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[variables('apimVnetAddressRange')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('defaultSubnetName')]",
+                        "properties": {
+                            "addressPrefix": "[variables('apimVnetAddressRange')]",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('apimNsgName'))]"
+                            },
+                            "serviceEndpoints": "[variables('serviceEndpoints')]"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2020-05-01",
+            "comments": "This VNET will belong to the Azure Firewall",
+            "location": "[resourceGroup().location]",
+            "name": "[variables('firewallVnetName')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks',variables('apimVnetName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks',variables('clientVnetName'))]"
+            ],
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[variables('firewallVnetAddressRange')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('firewallSubnetName')]",
+                        "properties": {
+                            "addressPrefix": "[variables('firewallVnetAddressRange')]"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+            "apiVersion": "2018-09-01",
+            "comments": "This is a private DNS zone link to APIM's VNET",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('dnsZoneName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('clientVnetName'))]"
+            ],
+            "name": "[variables('dnsZoneLinkClientVmVnetName')]",
+            "location": "global",
+            "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('clientVnetName'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+            "apiVersion": "2018-09-01",
+            "comments": "This is a private DNS zone link to the client VM's VNET",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('dnsZoneName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('apimVnetName'))]"
+            ],
+            "name": "[variables('dnsZoneLinkApimVnetName')]",
+            "location": "global",
+            "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('apimVnetName'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+            "apiVersion": "2018-09-01",
+            "comments": "This is a private DNS zone link to the Azure Firewall VNET",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('dnsZoneName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('firewallVnetName'))]"
+            ],
+            "name": "[variables('dnsZoneLinkFirewallVnetName')]",
+            "location": "global",
+            "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('firewallVnetName'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+            "apiVersion": "2020-05-01",
+            "location": "[resourceGroup().location]",
+            "comments": "This is a peering from the hub VNET to the APIM spoke vnet",
+            "name": "[variables('firewallHubToApimSpokePeeringName')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks',variables('apimVnetName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('firewallVnetName'))]"
+            ],
+            "properties": {
+                "allowForwardedTraffic": true,
+                "allowVirtualNetworkAccess": true,
+                "remoteVirtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks',variables('apimVnetName'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+            "apiVersion": "2020-05-01",
+            "location": "[resourceGroup().location]",
+            "comments": "This is a peering from the hub VNET to the client VM spoke vnet",
+            "name": "[variables('firewallHubToVmSpokePeeringName')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks',variables('clientVnetName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('firewallVnetName'))]"
+            ],
+            "properties": {
+                "allowForwardedTraffic": true,
+                "allowVirtualNetworkAccess": true,
+                "remoteVirtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks',variables('clientVnetName'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2020-05-01",
+            "location": "[resourceGroup().location]",
+            "comments": "This will be the subnet for the Azure Firewall. This is done so we can reference the subnet in the template.",
+            "name": "[variables('firewallVnetSubnetName')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('firewallVnetName'))]"
+            ],
+            "properties": {
+                "addressPrefix": "[variables('firewallVnetAddressRange')]"
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+            "apiVersion": "2020-05-01",
+            "name": "[variables('clientVmSpokeToFirewallHubPeeringName')]",
+            "location": "[resourceGroup().location]",
+            "comments": "This represents the VNET peering between the Client VM spoke VNET and the Azure Firewall hub VNET.",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('apimVnetName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('firewallVnetName'))]"
+            ],
+            "properties": {
+                "allowForwardedTraffic": true,
+                "allowVirtualNetworkAccess": true,
+                "remoteVirtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('firewallVnetName'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+            "apiVersion": "2020-05-01",
+            "name": "[variables('apimSpokeToFirewallHubPeeringName')]",
+            "location": "[resourceGroup().location]",
+            "comments": "This represents the VNET peering between the APIM Spoke VNET and the Azure Firewall hub VNET.",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('clientVnetName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('firewallVnetName'))]"
+            ],
+            "properties": {
+                "allowForwardedTraffic": true,
+                "allowVirtualNetworkAccess": true,
+                "remoteVirtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('firewallVnetName'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2020-05-01",
+            "comments": "This is the public IP for the Azure VM",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [],
+            "name": "[variables('clientVmPublicIpName')]",
+            "sku": {
+                "name": "Standard"
+            },
+            "properties": {
+                "idleTimeoutInMinutes": 4,
+                "publicIPAddressVersion": "IPv4",
+                "publicIPAllocationMethod": "Static",
+                "dnsSettings": {
+                    "domainNameLabel": "[variables('clientVmDnsName')]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2020-05-01",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('clientVmPublicIpName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('clientVnetName'), variables('defaultSubnetName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "name": "[variables('clientVmNicName')]",
+            "comments": "This will be the network interface for the client VM",
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig",
+                        "properties": {
+                            "primary": true,
+                            "privateIPAddressVersion": "IPv4",
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('clientVmPublicIpName'))]"
+                            },
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('clientVnetName'), variables('defaultSubnetName'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2019-07-01",
+            "name": "[variables('clientVmResourceName')]",
+            "location": "[resourceGroup().location]",
+            "comments": "This will be the client VM we will use for sending requests to APIM",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', variables('clientVmNicName'))]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "Standard_D1_v2"
+                },
+                "storageProfile": {
+                    "osDisk": {
+                        "createOption": "FromImage",
+                        "managedDisk": {
+                            "storageAccountType": "Standard_LRS"
+                        }
+                    },
+                    "imageReference": {
+                        "publisher": "Canonical",
+                        "offer": "UbuntuServer",
+                        "sku": "18.04-LTS",
+                        "version": "latest"
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('clientVmNicName'))]"
+                        }
+                    ]
+                },
+                "osProfile": {
+                    "computerName": "[variables('clientVmMachineName')]",
+                    "adminUsername": "[parameters('vmUsername')]",
+                    "adminPassword": "[parameters('vmPassword')]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines/extensions",
+            "location": "[resourceGroup().location]",
+            "apiVersion": "2019-07-01",
+            "comments": "This is a custom script extension to attempt to update apt-get and install net-tools",
+            "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachines', variables('clientVmResourceName'))]"
+            ],
+            "name": "[concat( variables('clientVmResourceName'), '/apt-get-net-tools')]",
+            "properties": {
+                "publisher": "Microsoft.Azure.Extensions",
+                "type": "CustomScript",
+                "typeHandlerVersion": "2.0",
+                "autoUpgradeMinorVersion": true,
+                "settings": {
+                    "fileUris": [],
+                    "commandToExecute": "apt-get -y update && apt-get -y install net-tools && apt-get -y install inetutils-traceroute"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2020-05-01",
+            "comments": "This is the public IP for the Azure Firewall",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [],
+            "name": "[variables('firewallPublicIpName')]",
+            "sku": {
+                "name": "Standard"
+            },
+            "properties": {
+                "idleTimeoutInMinutes": 4,
+                "publicIPAddressVersion": "IPv4",
+                "publicIPAllocationMethod": "Static",
+                "dnsSettings": {
+                    "domainNameLabel": "[variables('firewallDnsName')]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/azureFirewalls",
+            "apiVersion": "2020-05-01",
+            "comments": "This is the Azure Firewall",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('firewallVnetName'), variables('firewallSubnetName'))]",
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('firewallPublicIpName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "name": "[variables('firewallName')]",
+            "properties": {
+                "sku": {
+                    "name": "AZFW_VNet",
+                    "tier": "Standard"
+                },
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig",
+                        "properties": {
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('firewallPublicIpName'))]"
+                            },
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('firewallVnetName'), variables('firewallSubnetName'))]"
+                            }
+                        }
+                    }
+                ],
+                "applicationRuleCollections": [
+                    {
+                        "name": "APIManagementOutbound",
+                        "properties": {
+                            "action": {
+                                "type": "Allow"
+                            },
+                            "priority": 1000,
+                            "rules": [
+                                {
+                                    "description": "Azure Metrics and Health Monitoring Rules",
+                                    "name": "MetricsAndMonitor",
+                                    "targetFqdns": [
+                                        "gcs.prod.monitoring.core.windows.net",
+                                        "prod.warmpath.msftcloudes.com",
+                                        "global.prod.microsoftmetrics.com",
+                                        "global.metrics.nsatc.net",
+                                        "shoebox2.prod.microsoftmetrics.com",
+                                        "shoebox2.metrics.nsatc.net",
+                                        "shoebox2-red.prod.microsoftmetrics.com",
+                                        "shoebox2-black.prod.microsoftmetrics.com",
+                                        "shoebox2-red.shoebox2.metrics.nsatc.net",
+                                        "shoebox2-black.shoebox2.metrics.nsatc.net",
+                                        "prod3.prod.microsoftmetrics.com",
+                                        "prod3.metrics.nsatc.net",
+                                        "prod3-black.prod.microsoftmetrics.com",
+                                        "prod3-black.prod3.metrics.nsatc.net",
+                                        "prod3-red.prod.microsoftmetrics.com",
+                                        "prod3-red.prod3.metrics.nsatc.net",
+                                        "gcs.prod.warm.ingestion.monitoring.azure.com",
+                                        "[concat(variables('resourceGroupLocationCaseInsensitive'), '-shared.prod.warm.ingest.monitor.core.windows.net')]",
+                                        "qos.prod.warm.ingest.monitor.core.windows.net"
+                                    ],
+                                    "protocols": [
+                                        {
+                                            "port": 80,
+                                            "protocolType": "Http"
+                                        },
+                                        {
+                                            "port": 443,
+                                            "protocolType": "Https"
+                                        },
+                                        {
+                                            "port": 12000,
+                                            "protocolType": "Https"
+                                        },
+                                        {
+                                            "port": 1886,
+                                            "protocolType": "Https"
+                                        }
+                                    ],
+                                    "sourceAddresses": [
+                                        "[variables('clientVnetAddressRange')]",
+                                        "[variables('apimVnetAddressRange')]"
+                                    ]
+                                },
+                                {
+                                    "description": "Microsoft Azure PKI Rules",
+                                    "name": "MicrosoftPKI",
+                                    "targetFqdns": [
+                                        "crl3.digicert.com",
+                                        "crl4.digicert.com",
+                                        "ocsp.digicert.com",
+                                        "cacerts.digicert.com",
+                                        "www.d-trust.net",
+                                        "root-c3-ca2-2009.ocsp.d-trust.net",
+                                        "ctldl.windowsupdate.com",
+                                        "mscrl.microsoft.com",
+                                        "crl.microsoft.com",
+                                        "oneocsp.microsoft.com",
+                                        "ocsp.msocsp.com"
+                                    ],
+                                    "protocols": [
+                                        {
+                                            "port": 80,
+                                            "protocolType": "Http"
+                                        },
+                                        {
+                                            "port": 443,
+                                            "protocolType": "Https"
+                                        }
+                                    ],
+                                    "sourceAddresses": [
+                                        "[variables('clientVnetAddressRange')]",
+                                        "[variables('apimVnetAddressRange')]"
+                                    ]
+                                },
+                                {
+                                    "description": "Captcha Rules",
+                                    "name": "CaptchaRules",
+                                    "targetFqdns": [
+                                        "client.hip.live.com",
+                                        "partner.hip.live.com"
+                                    ],
+                                    "protocols": [
+                                        {
+                                            "port": 80,
+                                            "protocolType": "Http"
+                                        },
+                                        {
+                                            "port": 443,
+                                            "protocolType": "Https"
+                                        }
+                                    ],
+                                    "sourceAddresses": [
+                                        "[variables('clientVnetAddressRange')]",
+                                        "[variables('apimVnetAddressRange')]"
+                                    ]
+                                },
+                                {
+                                    "description": "Portal Diagnostics Rules",
+                                    "name": "PortalDiagnostics",
+                                    "targetFqdns": [
+                                        "dc.services.visualstudio.com"
+                                    ],
+                                    "protocols": [
+                                        {
+                                            "port": 80,
+                                            "protocolType": "Http"
+                                        },
+                                        {
+                                            "port": 443,
+                                            "protocolType": "Https"
+                                        }
+                                    ],
+                                    "sourceAddresses": [
+                                        "[variables('clientVnetAddressRange')]",
+                                        "[variables('apimVnetAddressRange')]"
+                                    ]
+                                },
+                                {
+                                    "description": "Log Analytics Rule",
+                                    "name": "loganalytics",
+                                    "targetFqdns": [
+                                        "*.ods.opinsights.azure.com",
+                                        "*.oms.opinsights.azure.com",
+                                        "*.blob.core.windows.net",
+                                        "*.azure-automation.net"
+                                    ],
+                                    "protocols": [
+                                        {
+                                            "port": 80,
+                                            "protocolType": "Http"
+                                        },
+                                        {
+                                            "port": 443,
+                                            "protocolType": "Https"
+                                        }
+                                    ],
+                                    "sourceAddresses": [
+                                        "[variables('clientVnetAddressRange')]",
+                                        "[variables('apimVnetAddressRange')]"
+                                    ]
+                                },
+                                {
+                                    "description": "Alow Ubuntu Apt-Get defaults",
+                                    "name": "ubuntu-apt-get",
+                                    "targetFqdns": [
+                                        "azure.archive.ubuntu.com",
+                                        "ppa.launchpad.net",
+                                        "security.ubuntu.com",
+                                        "packages.microsoft.com",
+                                        "changelogs.ubuntu.com",
+                                        "archive.ubuntu.com",
+                                        "motd.ubuntu.com",
+                                        "entropy.ubuntu.com"
+                                    ],
+                                    "protocols": [
+                                        {
+                                            "port": 80,
+                                            "protocolType": "Http"
+                                        },
+                                        {
+                                            "port": 443,
+                                            "protocolType": "Https"
+                                        }
+                                    ],
+                                    "sourceAddresses": [
+                                        "[variables('clientVnetAddressRange')]",
+                                        "[variables('apimVnetAddressRange')]"
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "networkRuleCollections": [
+                    {
+                        "name": "APIMNetworkRules",
+                        "properties": {
+                            "action": {
+                                "type": "Allow"
+                            },
+                            "priority": 1000,
+                            "rules": [
+                                {
+                                    "description": "Allow APIM Control Plane",
+                                    "name": "AllowAPIMControlPlane",
+                                    "protocols": [
+                                        "TCP"
+                                    ],
+                                    "sourceAddresses": [
+                                        "[variables('clientVnetAddressRange')]",
+                                        "[variables('apimVnetAddressRange')]"
+                                    ],
+                                    "destinationAddresses": [
+                                        "ApiManagement"
+                                    ],
+                                    "destinationPorts": [
+                                        "*"
+                                    ]
+                                },
+                                {
+                                    "description": "Allow Azure Storage",
+                                    "name": "AllowAzureStorage",
+                                    "protocols": [
+                                        "TCP"
+                                    ],
+                                    "sourceAddresses": [
+                                        "[variables('clientVnetAddressRange')]",
+                                        "[variables('apimVnetAddressRange')]"
+                                    ],
+                                    "destinationAddresses": [
+                                        "Storage"
+                                    ],
+                                    "destinationPorts": [
+                                        "*"
+                                    ]
+                                },
+                                {
+                                    "description": "Allow Azure Event Hubs",
+                                    "name": "AllowEventHub",
+                                    "protocols": [
+                                        "TCP"
+                                    ],
+                                    "sourceAddresses": [
+                                        "[variables('clientVnetAddressRange')]",
+                                        "[variables('apimVnetAddressRange')]"
+                                    ],
+                                    "destinationAddresses": [
+                                        "EventHub"
+                                    ],
+                                    "destinationPorts": [
+                                        "*"
+                                    ]
+                                },
+                                {
+                                    "description": "Allow Azure Key Vault",
+                                    "name": "AllowAzureKeyVault",
+                                    "protocols": [
+                                        "TCP"
+                                    ],
+                                    "sourceAddresses": [
+                                        "[variables('clientVnetAddressRange')]",
+                                        "[variables('apimVnetAddressRange')]"
+                                    ],
+                                    "destinationAddresses": [
+                                        "AzureKeyVault"
+                                    ],
+                                    "destinationPorts": [
+                                        "*"
+                                    ]
+                                },
+                                {
+                                    "description": "Allow Azure Active Directory",
+                                    "name": "AllowAzureActiveDirectory",
+                                    "protocols": [
+                                        "TCP"
+                                    ],
+                                    "sourceAddresses": [
+                                        "[variables('clientVnetAddressRange')]",
+                                        "[variables('apimVnetAddressRange')]"
+                                    ],
+                                    "destinationAddresses": [
+                                        "AzureActiveDirectory"
+                                    ],
+                                    "destinationPorts": [
+                                        "*"
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "name": "AllowSpokeToSpoke",
+                        "properties": {
+                            "action": {
+                                "type": "Allow"
+                            },
+                            "priority": 1001,
+                            "rules": [
+                                {
+                                    "description": "Allows spoke to spoke traffic",
+                                    "name": "AllowSpokeToSpokeTraffic",
+                                    "protocols": [
+                                        "TCP"
+                                    ],
+                                    "sourceAddresses": [
+                                        "[variables('clientVnetAddressRange')]",
+                                        "[variables('apimVnetAddressRange')]"
+                                    ],
+                                    "destinationAddresses": [
+                                        "[variables('clientVnetAddressRange')]",
+                                        "[variables('apimVnetAddressRange')]"
+                                    ],
+                                    "destinationPorts": [
+                                        "*"
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "name": "AllowUbuntuUDP",
+                        "properties": {
+                            "action": {
+                                "type": "Allow"
+                            },
+                            "priority": 1002,
+                            "rules": [
+                                {
+                                    "description": "Ubuntu connections",
+                                    "name": "AllowUbuntuUDP",
+                                    "protocols": [
+                                        "UDP"
+                                    ],
+                                    "sourceAddresses": [
+                                        "[variables('clientVnetAddressRange')]",
+                                        "[variables('apimVnetAddressRange')]"
+                                    ],
+                                    "destinationAddresses": [
+                                        "91.189.91.157",
+                                        "91.189.89.198",
+                                        "91.189.89.199",
+                                        "91.189.94.4"
+                                    ],
+                                    "destinationPorts": [
+                                        "*"
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.ApiManagement/service",
+            "apiVersion": "2019-12-01",
+            "comments": "This is the client API Management",
+            "name": "[variables('clientApimName')]",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Developer",
+                "capacity": 1
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('apimVnetName'), variables('defaultSubnetName'))]"
+            ],
+            "properties": {
+                "virtualNetworkType": "Internal",
+                "virtualNetworkConfiguration": {
+                    "subnetResourceId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('apimVnetName'), variables('defaultSubnetName'))]"
+                },
+                "publisherEmail": "[parameters('apimPublisherEMail')]",
+                "publisherName": "[parameters('apimPublisherName')]"
+            }
+        },
+        {
+            "type": "Microsoft.Network/privateDnsZones/A",
+            "apiVersion": "2018-09-01",
+            "name": "[concat(variables('dnsZoneName'), '/', variables('clientApimName'))]",
+            "comments": "Creating an A record with APIM's private IP",
+            "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service', variables('clientApimName'))]"
+            ],
+            "properties": {
+                "ttl": 3600,
+                "aRecords": [
+                    {
+                        "ipv4Address": "[reference(resourceId('Microsoft.ApiManagement/service', variables('clientApimName'))).privateIPAddresses[0]]"
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/routeTables",
+            "apiVersion": "2020-05-01",
+            "comments": "This will be the route table for both APIM and Client VM, so traffic flows through the Azure Firewall",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/azureFirewalls', variables('firewallName'))]"
+            ],
+            "name": "[variables('routeTableName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "routes": [
+                    {
+                        "name": "skip-your-ip",
+                        "properties": {
+                            "addressPrefix": "[variables('yourIPAsRange')]",
+                            "nextHopType": "Internet"
+                        }
+                    },
+                    {
+                        "name": "skip-apim-global-control-plane-1",
+                        "properties": {
+                            "addressPrefix": "[variables('apimControlPlaneIPs')[0]]",
+                            "nextHopType": "Internet"
+                        }
+                    },
+                    {
+                        "name": "skip-apim-global-control-plane-2",
+                        "properties": {
+                            "addressPrefix": "[variables('apimControlPlaneIPs')[1]]",
+                            "nextHopType": "Internet"
+                        }
+                    },
+                    {
+                        "name": "skip-apim-regional-control-plane",
+                        "properties": {
+                            "addressPrefix": "[variables('apimControlPlaneIPs')[2]]",
+                            "nextHopType": "Internet"
+                        }
+                    },
+                    {
+                        "name": "default-route",
+                        "properties": {
+                            "addressPrefix": "0.0.0.0/0",
+                            "nextHopType": "VirtualAppliance",
+                            "nextHopIpAddress": "[reference(resourceId('Microsoft.Network/azureFirewalls',variables('firewallName'))).ipConfigurations[0].properties.privateIPAddress]"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2020-05-01",
+            "comments": "This is an update to the APIM subnet to include the UDR",
+            "name": "[variables('apimVnetSubnetName')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('apimVnetName'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('apimNsgName'))]",
+                "[resourceId('Microsoft.Network/routeTables', variables('routeTableName'))]"
+            ],
+            "properties": {
+                "addressPrefix": "[variables('apimVnetAddressRange')]",
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('apimNsgName'))]"
+                },
+                "routeTable": {
+                    "id": "[resourceId('Microsoft.Network/routeTables', variables('routeTableName'))]"
+                },
+                "serviceEndpoints": "[variables('serviceEndpoints')]"
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2020-05-01",
+            "comments": "This is an update to the Client VM subnet to include the UDR",
+            "name": "[variables('clientVnetSubnetName')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('clientVnetName'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('clientVnetNsgName'))]",
+                "[resourceId('Microsoft.Network/routeTables', variables('routeTableName'))]"
+            ],
+            "properties": {
+                "addressPrefix": "[variables('clientVnetAddressRange')]",
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('clientVnetNsgName'))]"
+                },
+                "routeTable": {
+                    "id": "[resourceId('Microsoft.Network/routeTables', variables('routeTableName'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2020-05-01",
+            "name": "[variables('appGWPublicIPName')]",
+            "comments": "This will be the public IP for the Application Gateway",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Standard"
+            },
+            "dependsOn": [],
+            "properties": {
+                "dnsSettings": {
+                    "domainNameLabel": "[variables('appGWPublicDns')]"
+                },
+                "publicIPAllocationMethod": "Static",
+                "publicIPAddressVersion": "IPv4",
+                "idleTimeoutInMinutes": 4
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2020-05-01",
+            "location": "[resourceGroup().location]",
+            "comments": "This will be the NSG for the Application Gateway",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/azureFirewalls', variables('firewallName'))]"
+            ],
+            "name": "[variables('appGWNSGName')]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "allow-fw-ip",
+                        "properties": {
+                            "description": "Allow the source Azure Firewall's public IP",
+                            "access": "Allow",
+                            "destinationAddressPrefix": "10.0.0.0/24",
+                            "destinationPortRanges": ["80", "443"],
+                            "direction": "Inbound",
+                            "priority": 100,
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('firewallPublicIpName'))).ipAddress]",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "allow-required-ports",
+                        "properties": {
+                            "description": "Allow required AppGW ports",
+                            "access": "Allow",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "65200-65535",
+                            "direction": "Inbound",
+                            "priority": 101,
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2020-05-01",
+            "comments": "This is the desination VNET",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('appGWNSGName'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('apimNsgName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "name": "[variables('destinationVnetName')]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "10.0.0.0/23"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('appGWSubnetName')]",
+                        "properties": {
+                            "addressPrefix": "10.0.0.0/24",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('appGWNSGName'))]" 
+                            }
+                        }
+                    },
+                    {
+                        "name": "[variables('destinationApimSubnetName')]",
+                        "properties": {
+                            "addressPrefix": "10.0.1.0/24",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('apimNsgName'))]" 
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2020-05-01",
+            "comments": "This is the desination VNET Application Gateway Subnet",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('destinationVnetName'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('appGWNSGName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "name": "[variables('appGWSubnetResourceName')]",
+            "properties": {
+                "addressPrefix": "10.0.0.0/24",
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('appGWNSGName'))]" 
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2020-05-01",
+            "comments": "This is the desination VNET Application Gateway Subnet",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('destinationVnetName'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('apimNsgName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "name": "[variables('destinationApimSubnetResourceName')]",
+            "properties": {
+                "addressPrefix": "10.0.1.0/24",
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('apimNsgName'))]" 
+                }
+            }
+        },
+        {
+            "type": "Microsoft.ApiManagement/service",
+            "apiVersion": "2019-12-01",
+            "comments": "This is the destination API Management",
+            "name": "[variables('destinationApimName')]",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Developer",
+                "capacity": 1
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('destinationVnetName'), variables('destinationApimSubnetName'))]"
+            ],
+            "properties": {
+                "virtualNetworkType": "Internal",
+                "virtualNetworkConfiguration": {
+                    "subnetResourceId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('destinationVnetName'), variables('destinationApimSubnetName'))]"
+                },
+                "publisherEmail": "[parameters('apimPublisherEMail')]",
+                "publisherName": "[parameters('apimPublisherName')]"
+            },
+            "resources": [
+                {
+                    "type": "apis",
+                    "apiVersion": "2019-12-01",
+                    "comments": "This is a mock API to respond sample data",
+                    "location": "[resourceGroup().location]",
+                    "name": "[variables('destinationApimApiName')]",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.ApiManagement/service', variables('destinationApimName'))]"
+                    ],
+                    "properties": {
+                        "description": "This is a Mock API",
+                        "displayName": "Mock API",
+                        "serviceUrl": "[concat('http://127.0.0.1/', variables('destinationApimApiPath'))]",
+                        "path": "[variables('destinationApimApiPath')]",
+                        "subscriptionRequired": false,
+                        "protocols": [
+                            "http"
+                        ]
+                    },
+                    "resources": [
+                        {
+                            "name": "get-operation",
+                            "apiVersion": "2019-12-01",
+                            "type": "operations",
+                            "location": "[resourceGroup().location]",
+                            "dependsOn": [
+                                "[concat('Microsoft.ApiManagement/service/', variables('destinationApimName'), '/apis/', variables('destinationApimApiName'))]"
+                            ],
+                            "properties": {
+                                "displayName": "GET mock",
+                                "description": "Gets a mock response",
+                                "method": "GET",
+                                "urlTemplate": "/",
+                                "policies": "<policies><inbound><base/><return-response><set-status code=\"200\" reason=\"OK\" /><set-body>{\"value\":\"Mock response\"}</set-body></return-response></inbound><backend><base/></backend><outbound><base/></outbound><on-error><base/></on-error></policies>"
+                            },
+                            "resources": [
+                                {
+                                    "type": "policies",
+                                    "name": "policy",
+                                    "apiVersion": "2019-12-01",
+                                    "location": "[resourceGroup().location]",
+                                    "dependsOn": [
+                                        "[concat('Microsoft.ApiManagement/service/', variables('destinationApimName'), '/apis/', variables('destinationApimApiName'), '/operations/get-operation')]"
+                                    ],
+                                    "properties": {
+                                        "value": "<policies><inbound><base/><return-response><set-status code=\"200\" reason=\"OK\" /><set-body>{\"value\":\"Mock response\"}</set-body></return-response></inbound><backend><base/></backend><outbound><base/></outbound><on-error><base/></on-error></policies>"
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "type": "Microsoft.ApiManagement/service/products/apis",
+            "apiVersion": "2019-12-01",
+            "comments": "This is to add the starter product to the mock-api created.",
+            "location": "[resourceGroup().location]",
+            "name": "[concat(variables('destinationApimName'), '/starter/', variables('destinationApimApiName'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service', variables('destinationApimName'))]",
+                "[concat('Microsoft.ApiManagement/service/', variables('destinationApimName'), '/apis/', variables('destinationApimApiName'))]"
+            ],
+            "properties": {}
+        },
+        {
+            "type": "Microsoft.ApiManagement/service/products/apis",
+            "apiVersion": "2019-12-01",
+            "comments": "This is to add the unlimited product to the mock-api created.",
+            "location": "[resourceGroup().location]",
+            "name": "[concat(variables('destinationApimName'), '/unlimited/', variables('destinationApimApiName'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service', variables('destinationApimName'))]",
+                "[concat('Microsoft.ApiManagement/service/', variables('destinationApimName'), '/apis/', variables('destinationApimApiName'))]"
+            ],
+            "properties": {}
+        },
+        {
+            "type": "Microsoft.Network/applicationGateways",
+            "apiVersion": "2020-05-01",
+            "name": "[variables('appGWName')]",
+            "location": "[resourceGroup().location]",
+            "comments": "This is the Application Gateway serving as a front-end to APIM",
+            "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service', variables('destinationApimName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('destinationVnetName'), variables('appGWSubnetName'))]",
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('appGWPublicIPName'))]"
+            ],
+            "properties": {
+                "backendAddressPools": [
+                    {
+                        "name": "backend-apim-pool",
+                        "properties": {
+                            "backendAddresses": [
+                                {
+                                    "ipAddress": "[reference(resourceId('Microsoft.ApiManagement/service', variables('destinationApimName'))).privateIPAddresses[0]]"
+                                }
+                            ]
+                        }
+                    }
+                ],
+                "probes": [
+                    {
+                        "name": "apim-proxy-probe",
+                        "properties": {
+                            "host": "[replace(replace(reference(resourceId('Microsoft.ApiManagement/service', variables('destinationApimName'))).gatewayUrl, 'http://', ''), 'https://', '')]",
+                            "protocol": "Http",
+                            "port": 80,
+                            "pickHostNameFromBackendHttpSettings": false,
+                            "interval": 30,
+                            "path": "/status-0123456789abcdef",
+                            "timeout": 120,
+                            "unhealthyThreshold": 8
+                        }
+                    }
+                ],
+                "backendHttpSettingsCollection": [
+                    {
+                        "name": "backend-http-settings",
+                        "properties": {
+                            "cookieBasedAffinity": "Disabled",
+                            "hostName": "[replace(replace(reference(resourceId('Microsoft.ApiManagement/service', variables('destinationApimName'))).gatewayUrl, 'http://', ''), 'https://', '')]",
+                            "pickHostNameFromBackendAddress": false,
+                            "port": 80,
+                            "probe": {
+                                "id": "[concat(resourceId('Microsoft.Network/applicationGateways', variables('appGWName')), '/probes/apim-proxy-probe')]"
+                            },
+                            "probeEnabled": true,
+                            "protocol": "Http",
+                            "requestTimeout": 120
+                        }
+                    }
+                ],
+                "enableHttp2": true,
+                "frontendIPConfigurations": [
+                    {
+                        "name": "frontend-ip",
+                        "properties": {
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('appGWPublicIPName'))]"
+                            }
+                        }
+                    }
+                ],
+                "frontendPorts": [
+                    {
+                        "name": "frontend-port",
+                        "properties": {
+                            "port": 80
+                        }
+                    }
+                ],
+                "gatewayIPConfigurations": [
+                    {
+                        "name": "gateway-instance-ip-config",
+                        "properties": {
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('destinationVnetName'), variables('appGWSubnetName'))]"
+                            }
+                        }
+                    }
+                ],
+                "httpListeners": [
+                    {
+                        "name": "http-listener",
+                        "properties": {
+                            "frontendIPConfiguration": {
+                                "id": "[concat(resourceId('Microsoft.Network/applicationGateways', variables('appGWName')), '/frontendIPConfigurations/frontend-ip')]"
+                            },
+                            "frontendPort": {
+                                "id": "[concat(resourceId('Microsoft.Network/applicationGateways', variables('appGWName')), '/frontendPorts/frontend-port')]"
+                            },
+                            "protocol": "Http"
+                        }
+                    }
+                ],
+                "sku": {
+                    "name": "Standard_v2",
+                    "capacity": 2,
+                    "tier": "Standard_v2"
+                },
+                "requestRoutingRules": [
+                    {
+                        "name": "request-routing-rule",
+                        "properties": {
+                            "backendAddressPool": {
+                                "id": "[concat(resourceId('Microsoft.Network/applicationGateways', variables('appGWName')), '/backendAddressPools/backend-apim-pool')]"
+                            },
+                            "backendHttpSettings": {
+                                "id": "[concat(resourceId('Microsoft.Network/applicationGateways', variables('appGWName')), '/backendHttpSettingsCollection/backend-http-settings')]"
+                            },
+                            "ruleType": "Basic",
+                            "httpListener": {
+                                "id": "[concat(resourceId('Microsoft.Network/applicationGateways', variables('appGWName')), '/httpListeners/http-listener')]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.ApiManagement/service/apis",
+            "apiVersion": "2019-12-01",
+            "comments": "This API is to send APIM requests to App Gateway so it reaches the mock api",
+            "name": "[concat(variables('clientApimName'), '/', variables('destinationApimApiName'))]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [  
+                "[resourceId('Microsoft.ApiManagement/service', variables('clientApimName'))]",
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('appGWPublicIPName'))]"
+            ],
+            "properties": {
+                "description": "This is a Mock API",
+                "displayName": "Mock API",
+                "serviceUrl": "[concat('http://', reference(resourceId('Microsoft.Network/publicIPAddresses', variables('appGWPublicIPName'))).dnsSettings.fqdn, '/', variables('destinationApimApiPath'))]",
+                "path": "[variables('destinationApimApiPath')]",
+                "subscriptionRequired": false,
+                "protocols": [
+                    "http",
+                    "https"
+                ]
+            },
+            "resources": [
+                {
+                    "name": "get-operation",
+                    "apiVersion": "2019-12-01",
+                    "type": "operations",
+                    "location": "[resourceGroup().location]",
+                    "dependsOn": [
+                        "[concat('Microsoft.ApiManagement/service/', variables('clientApimName'), '/apis/', variables('destinationApimApiName'))]"
+                    ],
+                    "properties": {
+                        "displayName": "GET mock",
+                        "description": "Gets a mock response",
+                        "method": "GET",
+                        "urlTemplate": "/"
+                    }
+                }
+            ]
+        },
+        {
+            "type": "Microsoft.ApiManagement/service/products/apis",
+            "apiVersion": "2019-12-01",
+            "comments": "This is to add the starter product to the mock-api created.",
+            "location": "[resourceGroup().location]",
+            "name": "[concat(variables('clientApimName'), '/starter/', variables('destinationApimApiName'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service', variables('clientApimName'))]",
+                "[resourceId('Microsoft.ApiManagement/service/apis', variables('clientApimName'), variables('destinationApimApiName'))]"
+            ],
+            "properties": {}
+        },
+        {
+            "type": "Microsoft.ApiManagement/service/products/apis",
+            "apiVersion": "2019-12-01",
+            "comments": "This is to add the unlimited product to the mock-api created.",
+            "location": "[resourceGroup().location]",
+            "name": "[concat(variables('clientApimName'), '/unlimited/', variables('destinationApimApiName'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service', variables('clientApimName'))]",
+                "[resourceId('Microsoft.ApiManagement/service/apis', variables('clientApimName'), variables('destinationApimApiName'))]"
+            ],
+            "properties": {}
+        },
+        {
+            "type": "Microsoft.OperationalInsights/workspaces",
+            "name": "[variables('logAnalyticsName')]",
+            "apiVersion": "2020-08-01",
+            "comments": "This is a log analytics workspace where everything will be logged",
+            "dependsOn": [],
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "publicNetworkAccessForIngestion": "Enabled",
+                "publicNetworkAccessForQuery": "Enabled",
+                "sku": {
+                    "name": "Standard"
+                },
+                "retentionInDays": 30
+            }
+        },
+        {
+            "type": "Microsoft.ApiManagement/service/providers/diagnosticSettings",
+            "apiVersion": "2017-05-01-preview",
+            "location": "[resourceGroup().location]",
+            "name": "[concat(variables('clientApimName'), '/Microsoft.Insights/diag-settings')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service', variables('clientApimName'))]",
+                "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+            ],
+            "properties": {
+                "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]",
+                "logAnalyticsDestinationType": "Dedicated",
+                "metrics": [
+                    {
+                        "category": "Gateway Requests",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    },
+                    {
+                        "category": "Capacity",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    },
+                    {
+                        "category": "EventHub Events",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    },
+                    {
+                        "category": "Network Status",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    }
+                ],
+                "logs": [
+                    {
+                        "category": "GatewayLogs",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.ApiManagement/service/providers/diagnosticSettings",
+            "apiVersion": "2017-05-01-preview",
+            "location": "[resourceGroup().location]",
+            "name": "[concat(variables('destinationApimName'), '/Microsoft.Insights/diag-settings')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.ApiManagement/service', variables('destinationApimName'))]",
+                "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+            ],
+            "properties": {
+                "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]",
+                "logAnalyticsDestinationType": "Dedicated",
+                "metrics": [
+                    {
+                        "category": "Gateway Requests",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    },
+                    {
+                        "category": "Capacity",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    },
+                    {
+                        "category": "EventHub Events",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    },
+                    {
+                        "category": "Network Status",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    }
+                ],
+                "logs": [
+                    {
+                        "category": "GatewayLogs",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/applicationGateways/providers/diagnosticSettings",
+            "apiVersion": "2017-05-01-preview",
+            "location": "[resourceGroup().location]",
+            "name": "[concat(variables('appGWName'), '/Microsoft.Insights/diag-settings')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/applicationGateways', variables('appGWName'))]",
+                "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+            ],
+            "properties": {
+                "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]",
+                "metrics": [
+                    {
+                        "category": "AllMetrics",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    }
+                ],
+                "logs": [
+                    {
+                        "category": "ApplicationGatewayAccessLog",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    },
+                    {
+                        "category": "ApplicationGatewayPerformanceLog",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    },
+                    {
+                        "category": "ApplicationGatewayFirewallLog",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/azureFirewalls/providers/diagnosticSettings",
+            "apiVersion": "2017-05-01-preview",
+            "location": "[resourceGroup().location]",
+            "name": "[concat(variables('firewallName'), '/Microsoft.Insights/diag-settings')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/azureFirewalls', variables('firewallName'))]",
+                "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]"
+            ],
+            "properties": {
+                "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('logAnalyticsName'))]",
+                "metrics": [
+                    {
+                        "category": "AllMetrics",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    }
+                ],
+                "logs": [
+                    {
+                        "category": "AzureFirewallApplicationRule",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    },
+                    {
+                        "category": "AzureFirewallNetworkRule",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    },
+                    {
+                        "category": "AzureFirewallDnsProxy",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "2020-06-01",
+            "comments": "Creating a sub-deployment in order to setup and outbound rule from the Azure Firewall to App Gateway as you cannot add Application Rules to Firewall as a resource",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/applicationGateways', variables('appGWName'))]",
+                "[resourceId('Microsoft.Network/azureFirewalls', variables('firewallName'))]",
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('firewallPublicIpName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('firewallVnetName'), variables('firewallSubnetName'))]"
+            ],
+            "name": "firewallSetupDeployment",
+            "properties": {
+                "expressionEvaluationOptions": {
+                    "scope": "Inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                    "apimVnetAddressRange": {
+                        "value": "[variables('apimVnetAddressRange')]"
+                    },
+                    "appGatewayFqdn": {
+                        "value": "[reference(resourceId('Microsoft.Network/publicIpAddresses', variables('appGWPublicIPName'))).dnsSettings.fqdn]"
+                    },
+                    "firewallName": {
+                        "value": "[variables('firewallName')]"
+                    },
+                    "clientVnetAddressRange": {
+                        "value": "[variables('clientVnetAddressRange')]"
+                    },
+                    "firewallPublicIpId": {
+                        "value": "[resourceId('Microsoft.Network/publicIPAddresses', variables('firewallPublicIpName'))]"
+                    },
+                    "firewallSubnetId": {
+                        "value": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('firewallVnetName'), variables('firewallSubnetName'))]"
+                    },
+                    "resourceGroupLocationCaseInsensitive": {
+                        "value": "[variables('resourceGroupLocationCaseInsensitive')]"
+                    }
+                },
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                        "firewallName": {
+                            "type": "string",
+                            "metadata": {
+                                "description": "This is the name of the Azure Firewall"
+                            }
+                        },
+                        "firewallPublicIpId": {
+                            "type": "string",
+                            "metadata": {
+                                "description": "This is the Azure Firewall's public IP"
+                            }
+                        },
+                        "firewallSubnetId": {
+                            "type": "string",
+                            "metadata": {
+                                "description": "This is the Azure Firewall subnet IP."
+                            }
+                        },
+                        "clientVnetAddressRange": {
+                            "type": "string",
+                            "metadata": {
+                                "description": "This is the VNET address range of the client VM."
+                            }
+                        },
+                        "apimVnetAddressRange": {
+                            "type": "string",
+                            "metadata": {
+                                "description": "This is the VNET address range of the APIM."
+                            }
+                        },
+                        "appGatewayFqdn": {
+                            "type": "string",
+                            "metadata": {
+                                "description": "This represents the AppGW's FQDN"
+                            }
+                        },
+                        "resourceGroupLocationCaseInsensitive": {
+                            "type": "string",
+                            "metadata": {
+                                "description": "This is the Azure Monitor regional ingestion endpoint"
+                            }
+                        }
+                    },
+                    "resources": [
+                        {
+                            "type": "Microsoft.Network/azureFirewalls",
+                            "apiVersion": "2020-05-01",
+                            "comments": "This is the Azure Firewall",
+                            "location": "[resourceGroup().location]",
+                            "name": "[parameters('firewallName')]",
+                            "properties": {
+                                "sku": {
+                                    "name": "AZFW_VNet",
+                                    "tier": "Standard"
+                                },
+                                "ipConfigurations": [
+                                    {
+                                        "name": "ipconfig",
+                                        "properties": {
+                                            "publicIPAddress": {
+                                                "id": "[parameters('firewallPublicIpId')]"
+                                            },
+                                            "subnet": {
+                                                "id": "[parameters('firewallSubnetId')]"
+                                            }
+                                        }
+                                    }
+                                ],
+                                "applicationRuleCollections": [
+                                    {
+                                        "name": "APIManagementOutbound",
+                                        "properties": {
+                                            "action": {
+                                                "type": "Allow"
+                                            },
+                                            "priority": 1000,
+                                            "rules": [
+                                                {
+                                                    "description": "Azure Metrics and Health Monitoring Rules",
+                                                    "name": "MetricsAndMonitor",
+                                                    "targetFqdns": [
+                                                        "gcs.prod.monitoring.core.windows.net",
+                                                        "prod.warmpath.msftcloudes.com",
+                                                        "global.prod.microsoftmetrics.com",
+                                                        "global.metrics.nsatc.net",
+                                                        "shoebox2.prod.microsoftmetrics.com",
+                                                        "shoebox2.metrics.nsatc.net",
+                                                        "shoebox2-red.prod.microsoftmetrics.com",
+                                                        "shoebox2-black.prod.microsoftmetrics.com",
+                                                        "shoebox2-red.shoebox2.metrics.nsatc.net",
+                                                        "shoebox2-black.shoebox2.metrics.nsatc.net",
+                                                        "prod3.prod.microsoftmetrics.com",
+                                                        "prod3.metrics.nsatc.net",
+                                                        "prod3-black.prod.microsoftmetrics.com",
+                                                        "prod3-black.prod3.metrics.nsatc.net",
+                                                        "prod3-red.prod.microsoftmetrics.com",
+                                                        "prod3-red.prod3.metrics.nsatc.net",
+                                                        "gcs.prod.warm.ingestion.monitoring.azure.com",
+                                                        "[concat(parameters('resourceGroupLocationCaseInsensitive'), '-shared.prod.warm.ingest.monitor.core.windows.net')]",
+                                                        "qos.prod.warm.ingest.monitor.core.windows.net"
+                                                    ],
+                                                    "protocols": [
+                                                        {
+                                                            "port": 80,
+                                                            "protocolType": "Http"
+                                                        },
+                                                        {
+                                                            "port": 443,
+                                                            "protocolType": "Https"
+                                                        },
+                                                        {
+                                                            "port": 12000,
+                                                            "protocolType": "Https"
+                                                        },
+                                                        {
+                                                            "port": 1886,
+                                                            "protocolType": "Https"
+                                                        }
+                                                    ],
+                                                    "sourceAddresses": [
+                                                        "[parameters('clientVnetAddressRange')]",
+                                                        "[parameters('apimVnetAddressRange')]"
+                                                    ]
+                                                },
+                                                {
+                                                    "description": "Microsoft Azure PKI Rules",
+                                                    "name": "MicrosoftPKI",
+                                                    "targetFqdns": [
+                                                        "crl3.digicert.com",
+                                                        "crl4.digicert.com",
+                                                        "ocsp.digicert.com",
+                                                        "cacerts.digicert.com",
+                                                        "www.d-trust.net",
+                                                        "root-c3-ca2-2009.ocsp.d-trust.net",
+                                                        "ctldl.windowsupdate.com",
+                                                        "mscrl.microsoft.com",
+                                                        "crl.microsoft.com",
+                                                        "oneocsp.microsoft.com",
+                                                        "ocsp.msocsp.com"
+                                                    ],
+                                                    "protocols": [
+                                                        {
+                                                            "port": 80,
+                                                            "protocolType": "Http"
+                                                        },
+                                                        {
+                                                            "port": 443,
+                                                            "protocolType": "Https"
+                                                        }
+                                                    ],
+                                                    "sourceAddresses": [
+                                                        "[parameters('clientVnetAddressRange')]",
+                                                        "[parameters('apimVnetAddressRange')]"
+                                                    ]
+                                                },
+                                                {
+                                                    "description": "Captcha Rules",
+                                                    "name": "CaptchaRules",
+                                                    "targetFqdns": [
+                                                        "client.hip.live.com",
+                                                        "partner.hip.live.com"
+                                                    ],
+                                                    "protocols": [
+                                                        {
+                                                            "port": 80,
+                                                            "protocolType": "Http"
+                                                        },
+                                                        {
+                                                            "port": 443,
+                                                            "protocolType": "Https"
+                                                        }
+                                                    ],
+                                                    "sourceAddresses": [
+                                                        "[parameters('clientVnetAddressRange')]",
+                                                        "[parameters('apimVnetAddressRange')]"
+                                                    ]
+                                                },
+                                                {
+                                                    "description": "Portal Diagnostics Rules",
+                                                    "name": "PortalDiagnostics",
+                                                    "targetFqdns": [
+                                                        "dc.services.visualstudio.com"
+                                                    ],
+                                                    "protocols": [
+                                                        {
+                                                            "port": 80,
+                                                            "protocolType": "Http"
+                                                        },
+                                                        {
+                                                            "port": 443,
+                                                            "protocolType": "Https"
+                                                        }
+                                                    ],
+                                                    "sourceAddresses": [
+                                                        "[parameters('clientVnetAddressRange')]",
+                                                        "[parameters('apimVnetAddressRange')]"
+                                                    ]
+                                                },
+                                                {
+                                                    "description": "Log Analytics Rule",
+                                                    "name": "loganalytics",
+                                                    "targetFqdns": [
+                                                        "*.ods.opinsights.azure.com",
+                                                        "*.oms.opinsights.azure.com",
+                                                        "*.blob.core.windows.net",
+                                                        "*.azure-automation.net"
+                                                    ],
+                                                    "protocols": [
+                                                        {
+                                                            "port": 80,
+                                                            "protocolType": "Http"
+                                                        },
+                                                        {
+                                                            "port": 443,
+                                                            "protocolType": "Https"
+                                                        }
+                                                    ],
+                                                    "sourceAddresses": [
+                                                        "[parameters('clientVnetAddressRange')]",
+                                                        "[parameters('apimVnetAddressRange')]"
+                                                    ]
+                                                },
+                                                {
+                                                    "description": "Alow Ubuntu Apt-Get defaults",
+                                                    "name": "ubuntu-apt-get",
+                                                    "targetFqdns": [
+                                                        "azure.archive.ubuntu.com",
+                                                        "ppa.launchpad.net",
+                                                        "security.ubuntu.com",
+                                                        "packages.microsoft.com",
+                                                        "changelogs.ubuntu.com",
+                                                        "archive.ubuntu.com",
+                                                        "motd.ubuntu.com",
+                                                        "entropy.ubuntu.com"
+                                                    ],
+                                                    "protocols": [
+                                                        {
+                                                            "port": 80,
+                                                            "protocolType": "Http"
+                                                        },
+                                                        {
+                                                            "port": 443,
+                                                            "protocolType": "Https"
+                                                        }
+                                                    ],
+                                                    "sourceAddresses": [
+                                                        "[parameters('clientVnetAddressRange')]",
+                                                        "[parameters('apimVnetAddressRange')]"
+                                                    ]
+                                                },
+                                                {
+                                                    "description": "Allow Application Gateway",
+                                                    "name": "appgatewayrule",
+                                                    "targetFqdns": [
+                                                        "[parameters('appGatewayFqdn')]"
+                                                    ],
+                                                    "protocols": [
+                                                        {
+                                                            "port": 80,
+                                                            "protocolType": "Http"
+                                                        },
+                                                        {
+                                                            "port": 443,
+                                                            "protocolType": "Https"
+                                                        }
+                                                    ],
+                                                    "sourceAddresses": [
+                                                        "[parameters('clientVnetAddressRange')]",
+                                                        "[parameters('apimVnetAddressRange')]"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    }
+                                ],
+                                "networkRuleCollections": [
+                                    {
+                                        "name": "APIMNetworkRules",
+                                        "properties": {
+                                            "action": {
+                                                "type": "Allow"
+                                            },
+                                            "priority": 1000,
+                                            "rules": [
+                                                {
+                                                    "description": "Allow APIM Control Plane",
+                                                    "name": "AllowAPIMControlPlane",
+                                                    "protocols": [
+                                                        "TCP"
+                                                    ],
+                                                    "sourceAddresses": [
+                                                        "[parameters('clientVnetAddressRange')]",
+                                                        "[parameters('apimVnetAddressRange')]"
+                                                    ],
+                                                    "destinationAddresses": [
+                                                        "ApiManagement"
+                                                    ],
+                                                    "destinationPorts": [
+                                                        "*"
+                                                    ]
+                                                },
+                                                {
+                                                    "description": "Allow Azure Storage",
+                                                    "name": "AllowAzureStorage",
+                                                    "protocols": [
+                                                        "TCP"
+                                                    ],
+                                                    "sourceAddresses": [
+                                                        "[parameters('clientVnetAddressRange')]",
+                                                        "[parameters('apimVnetAddressRange')]"
+                                                    ],
+                                                    "destinationAddresses": [
+                                                        "Storage"
+                                                    ],
+                                                    "destinationPorts": [
+                                                        "*"
+                                                    ]
+                                                },
+                                                {
+                                                    "description": "Allow Azure Event Hubs",
+                                                    "name": "AllowEventHub",
+                                                    "protocols": [
+                                                        "TCP"
+                                                    ],
+                                                    "sourceAddresses": [
+                                                        "[parameters('clientVnetAddressRange')]",
+                                                        "[parameters('apimVnetAddressRange')]"
+                                                    ],
+                                                    "destinationAddresses": [
+                                                        "EventHub"
+                                                    ],
+                                                    "destinationPorts": [
+                                                        "*"
+                                                    ]
+                                                },
+                                                {
+                                                    "description": "Allow Azure Key Vault",
+                                                    "name": "AllowAzureKeyVault",
+                                                    "protocols": [
+                                                        "TCP"
+                                                    ],
+                                                    "sourceAddresses": [
+                                                        "[parameters('clientVnetAddressRange')]",
+                                                        "[parameters('apimVnetAddressRange')]"
+                                                    ],
+                                                    "destinationAddresses": [
+                                                        "AzureKeyVault"
+                                                    ],
+                                                    "destinationPorts": [
+                                                        "*"
+                                                    ]
+                                                },
+                                                {
+                                                    "description": "Allow Azure Active Directory",
+                                                    "name": "AllowAzureActiveDirectory",
+                                                    "protocols": [
+                                                        "TCP"
+                                                    ],
+                                                    "sourceAddresses": [
+                                                        "[parameters('clientVnetAddressRange')]",
+                                                        "[parameters('apimVnetAddressRange')]"
+                                                    ],
+                                                    "destinationAddresses": [
+                                                        "AzureActiveDirectory"
+                                                    ],
+                                                    "destinationPorts": [
+                                                        "*"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    {
+                                        "name": "AllowSpokeToSpoke",
+                                        "properties": {
+                                            "action": {
+                                                "type": "Allow"
+                                            },
+                                            "priority": 1001,
+                                            "rules": [
+                                                {
+                                                    "description": "Allows spoke to spoke traffic",
+                                                    "name": "AllowSpokeToSpokeTraffic",
+                                                    "protocols": [
+                                                        "TCP"
+                                                    ],
+                                                    "sourceAddresses": [
+                                                        "[parameters('clientVnetAddressRange')]",
+                                                        "[parameters('apimVnetAddressRange')]"
+                                                    ],
+                                                    "destinationAddresses": [
+                                                        "[parameters('clientVnetAddressRange')]",
+                                                        "[parameters('apimVnetAddressRange')]"
+                                                    ],
+                                                    "destinationPorts": [
+                                                        "*"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    },
+                                    {
+                                        "name": "AllowUbuntuUDP",
+                                        "properties": {
+                                            "action": {
+                                                "type": "Allow"
+                                            },
+                                            "priority": 1002,
+                                            "rules": [
+                                                {
+                                                    "description": "Ubuntu connections",
+                                                    "name": "AllowUbuntuUDP",
+                                                    "protocols": [
+                                                        "UDP"
+                                                    ],
+                                                    "sourceAddresses": [
+                                                        "[parameters('clientVnetAddressRange')]",
+                                                        "[parameters('apimVnetAddressRange')]"
+                                                    ],
+                                                    "destinationAddresses": [
+                                                        "91.189.91.157",
+                                                        "91.189.89.198",
+                                                        "91.189.89.199",
+                                                        "91.189.94.4"
+                                                    ],
+                                                    "destinationPorts": [
+                                                        "*"
+                                                    ]
+                                                }
+                                            ]
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+    ],
+    "outputs": {
+        "VirtualMachineDNS": {
+            "type": "string",
+            "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('clientVmPublicIpName'))).dnsSettings.fqdn]"
+        },
+        "VirtualMachineIP": {
+            "type": "string",
+            "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('clientVmPublicIpName'))).ipAddress]"
+        },
+        "VirtualMachineUsername": {
+            "type": "string",
+            "value": "[parameters('vmUsername')]"
+        },
+        "ApplicationGatewayDNS": {
+            "type": "string",
+            "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('appGWPublicIPName'))).dnsSettings.fqdn]"
+        },
+        "ApplicationGatewayIP": {
+            "type": "string",
+            "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('appGWPublicIPName'))).ipAddress]"
+        },
+        "AzureFirewallDNS": {
+            "type": "string",
+            "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('firewallPublicIpName'))).dnsSettings.fqdn]"
+        },
+        "AzureFirewallIP": {
+            "type": "string",
+            "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('firewallPublicIpName'))).ipAddress]"
+        },
+        "ClientAPIManagementGatewayUrl": {
+            "type": "string",
+            "value": "[reference(resourceId('Microsoft.ApiManagement/service', variables('clientApimName'))).gatewayUrl]"
+        },
+        "ClientAPIManagementPrivateIpAddress": {
+            "type": "string",
+            "value": "[reference(resourceId('Microsoft.ApiManagement/service', variables('clientApimName'))).privateIPAddresses[0]]"
+        },
+        "DestinationAPIManagementGatewayUrl": {
+            "type": "string",
+            "value": "[reference(resourceId('Microsoft.ApiManagement/service', variables('destinationApimName'))).gatewayUrl]"
+        },
+        "DestinationAPIManagementPrivateIpAddress": {
+            "type": "string",
+            "value": "[reference(resourceId('Microsoft.ApiManagement/service', variables('destinationApimName'))).privateIPAddresses[0]]"
+        }
+    }
+}
