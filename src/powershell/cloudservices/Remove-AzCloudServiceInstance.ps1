@@ -1,3 +1,42 @@
+<#
+.SYNOPSIS
+
+Deletes a Cloud Service instance.
+
+.DESCRIPTION
+
+Deletes a single Cloud Service instance.
+
+.PARAMETER CloudServiceName
+
+Specify the name of the Cloud Service for which we will delete an instance of.
+
+.PARAMETER Slot
+
+Specify whether we are deleting from the Production or Staging slot.
+
+.PARAMETER Role
+
+Specify the role name to delete. E.g.: If an instance is named 'WebRole_IN_0' the Name for the Role is 'WebRole'.
+
+.PARAMETER InstanceID
+
+Specify the instance ID to delete. E.g.: If an instance is named 'WebRole_IN_0' the instance ID is 0.
+
+.PARAMETER EnvironmentName
+
+Specify 'AzureCloud' for Public Azure, 'AzureChinaCloud' for Azure China, 'AzureGermanCloud' for Azure Germany and 'AzureUSGovernment' for Azure Government.
+The default is AzureCloud for Public Azure.
+
+.INPUTS
+
+This cmdlet does not recieve inputs.
+
+.OUTPUTS
+
+Returns the HTTP Response body of the deletion's result
+
+#>
 function Remove-AzCloudServiceInstance {
     [CmdletBinding()]
     param(
