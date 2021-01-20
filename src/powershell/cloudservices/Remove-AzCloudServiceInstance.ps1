@@ -88,7 +88,7 @@ function Remove-AzCloudServiceInstance {
         $context = Get-AzContext
         if($null -eq $context -or $null -eq $context.Subscription) {
             $errorRecord = New-Object System.Management.Automation.ErrorRecord `
-                (New-Object System.Management.Automation.PSInvalidOperationException "Run Connect-AzureRmAccount to login."), `
+                (New-Object System.Management.Automation.PSInvalidOperationException "Run Connect-AzAccount to login."), `
                 "", `
                 ([System.Management.Automation.ErrorCategory]::AuthenticationError), `
                 $null
