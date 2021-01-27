@@ -1554,31 +1554,7 @@
                 "logAnalyticsDestinationType": "Dedicated",
                 "metrics": [
                     {
-                        "category": "Gateway Requests",
-                        "enabled": true,
-                        "retentionPolicy": {
-                            "enabled": false,
-                            "days": 0
-                        }
-                    },
-                    {
-                        "category": "Capacity",
-                        "enabled": true,
-                        "retentionPolicy": {
-                            "enabled": false,
-                            "days": 0
-                        }
-                    },
-                    {
-                        "category": "EventHub Events",
-                        "enabled": true,
-                        "retentionPolicy": {
-                            "enabled": false,
-                            "days": 0
-                        }
-                    },
-                    {
-                        "category": "Network Status",
+                        "category": "AllMetrics",
                         "enabled": true,
                         "retentionPolicy": {
                             "enabled": false,
@@ -1612,31 +1588,7 @@
                 "logAnalyticsDestinationType": "Dedicated",
                 "metrics": [
                     {
-                        "category": "Gateway Requests",
-                        "enabled": true,
-                        "retentionPolicy": {
-                            "enabled": false,
-                            "days": 0
-                        }
-                    },
-                    {
-                        "category": "Capacity",
-                        "enabled": true,
-                        "retentionPolicy": {
-                            "enabled": false,
-                            "days": 0
-                        }
-                    },
-                    {
-                        "category": "EventHub Events",
-                        "enabled": true,
-                        "retentionPolicy": {
-                            "enabled": false,
-                            "days": 0
-                        }
-                    },
-                    {
-                        "category": "Network Status",
+                        "category": "AllMetrics",
                         "enabled": true,
                         "retentionPolicy": {
                             "enabled": false,
