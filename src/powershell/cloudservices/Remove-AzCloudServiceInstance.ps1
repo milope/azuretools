@@ -1,15 +1,15 @@
 <#
 .SYNOPSIS
 
-Deletes a Cloud Service instance.
+Deletes a classic Cloud Service instance.
 
 .DESCRIPTION
 
-Deletes a single Cloud Service instance.
+Deletes a single classic Cloud Service instance.
 
 .PARAMETER CloudServiceName
 
-Specify the name of the Cloud Service for which we will delete an instance of.
+Specify the name of the classic Cloud Service for which we will delete an instance of.
 
 .PARAMETER Slot
 
