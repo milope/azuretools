@@ -1,0 +1,292 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "resourcePrefix": {
+            "type": "string",
+            "metadata": {
+                "description": "Resource prefix for all resources"
+            }
+        },
+        "apimPublisherName": {
+            "type": "string",
+            "metadata": {
+                "description": "This will be the APIM Publisher Name"
+            }
+        },
+        "apimPublisherEMail": {
+            "type": "string",
+            "metadata": {
+                "description": "This will be the APIM Publisher E-Mail"
+            }
+        }
+    },
+    "variables": {
+        "vnetName": "[concat(parameters('resourcePrefix'), 'Vnet')]",
+        "apimSubnetName": "ApimSubnet",
+        "redisPESubnetName": "RedisPrivateEndpoint",
+        "redisName": "[concat(parameters('resourcePrefix'), 'Redis')]",
+        "redisPrivateEndpointName": "RedisPrivateEndpopint",
+        "redisPrivateLinkConnectionName": "RedisPrivateLinkConnection",
+        "apimName": "[concat(parameters('resourcePrefix'), 'apim')]",
+        "resourceManager": "[substring(environment().resourceManager,0,sub(length(environment().resourceManager), 1))]",
+        "redisSuffixes": {
+            "AzureCloud": ".redis.cache.windows.net",
+            "AzureUSGovernment": ".redis.cache.usgovcloudapi.net",
+            "AzureChinaCloud": ".redis.cache.chinacloudapi.cn",
+            "AzureGermanCloud": ".redis.cache.cloudapi.de"
+        },
+        "privateDnsZoneName": "[concat('privatelink', variables('redisSuffixes')[environment().name])]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2020-08-01",
+            "name": "[variables('vnetName')]",
+            "comments": "This will be the VNET where both APIM and the private link will reside",
+            "dependsOn": [],
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "192.168.0.0/24"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('apimSubnetName')]",
+                        "properties": {
+                            "addressPrefix": "192.168.0.0/25"
+                        }
+                    },
+                    {
+                        "name": "[variables('redisPESubnetName')]",
+                        "properties": {
+                            "addressPrefix": "192.168.0.128/25",
+                            "privateEndpointNetworkPolicies": "Disabled",
+                            "privateLinkServiceNetworkPolicies": "Disabled"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2020-08-01",
+            "comments": "Creating the APIM subnet",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "name": "[concat(variables('vnetName'), '/', concat(variables('apimSubnetName')))]",
+            "properties": {
+                "addressPrefix": "192.168.0.0/25"
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2020-08-01",
+            "comments": "Creating the Redis Private Link subnet",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "name": "[concat(variables('vnetName'), '/', concat(variables('redisPESubnetName')))]",
+            "properties": {
+                "addressPrefix": "192.168.0.128/25",
+                "privateEndpointNetworkPolicies": "Disabled",
+                "privateLinkServiceNetworkPolicies": "Disabled"
+            }
+        },
+        {
+            "type": "Microsoft.Cache/Redis",
+            "apiVersion": "2020-06-01",
+            "comments": "Redis cache resource",
+            "dependsOn":[],
+            "name": "[variables('redisName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "enableNonSslPort": false,
+                "minimumTlsVersion": "1.2",
+                "publicNetworkAccess": "Disabled",
+                "sku": {
+                    "name": "Basic",
+                    "capacity": 1,
+                    "family": "C"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/privateEndpoints",
+            "apiVersion": "2020-08-01",
+            "name": "[variables('redisPrivateEndpointName')]",
+            "comments": "Creating the Redis Private endpoint",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), concat(variables('redisPESubnetName')))]",
+                "[resourceId('Microsoft.Cache/Redis', variables('redisName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "subnet": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), concat(variables('redisPESubnetName')))]"
+                },
+                "privateLinkServiceConnections": [
+                    {
+                        "name": "[variables('redisPrivateLinkConnectionName')]",
+                        "properties": {
+                            "privateLinkServiceId": "[resourceId('Microsoft.Cache/Redis', variables('redisName'))]",
+                            "groupIds": [
+                                "redisCache"
+                            ]
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/privateDnsZones",
+            "apiVersion": "2018-09-01",
+            "comments": "Private DNS zone for Cache for Redis",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+            ],
+            "location": "global",
+            "name": "[variables('privateDnsZoneName')]",
+            "properties": {}
+        },
+        {
+            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+            "apiVersion": "2018-09-01",
+            "comments": "Link the Private DNS Zone to the APIM/Redis subnet",
+            "name": "[concat(variables('privateDnsZoneName'), '/virtualNetworkLink')]",
+            "location": "global",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]",
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneName'))]"
+            ],
+            "properties": {
+                "registrationEnabled": false,
+                "virtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+            "apiVersion": "2020-08-01",
+            "comments": "Private Endpoint Private DNS Zone Groups",
+            "name": "[concat(variables('redisPrivateEndpointName'), '/privateDnsZoneGroup')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneName'))]",
+                "[resourceId('Microsoft.Network/privateEndpoints', variables('redisPrivateEndpointName'))]"
+            ],
+            "properties": {
+                "privateDnsZoneConfigs": [
+                    {
+                        "name": "DNSZoneConfiguration",
+                        "properties": {
+                            "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('privateDnsZoneName'))]"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.ApiManagement/service",
+            "apiVersion": "2019-12-01",
+            "comments": "This is the client API Management",
+            "name": "[variables('apimName')]",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Developer",
+                "capacity": 1
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('apimSubnetName'))]",
+                "[resourceId('Microsoft.Network/privateEndpoints/privateDnsZoneGroups', variables('redisPrivateEndpointName'), 'privateDnsZoneGroup')]",
+                "[resourceId('Microsoft.Cache/Redis', variables('redisName'))]"
+            ],
+            "properties": {
+                "virtualNetworkType": "External",
+                "virtualNetworkConfiguration": {
+                    "subnetResourceId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('apimSubnetName'))]"
+                },
+                "publisherEmail": "[parameters('apimPublisherEMail')]",
+                "publisherName": "[parameters('apimPublisherName')]"
+            },
+            "resources": [
+                {
+                    "type": "caches",
+                    "apiVersion": "2020-12-01",
+                    "comments": "External Cache for Redis",
+                    "name": "externalRedis",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]",
+                        "[resourceId('Microsoft.Cache/Redis', variables('redisName'))]"
+                    ],
+                    "location": "[resourceGroup().location]",
+                    "properties": {
+                        "description": "External Cache for Redis using private link",
+                        "resourceId": "[concat(variables('resourceManager'), resourceId('Microsoft.Cache/Redis', variables('redisName')))]",
+                        "connectionString": "[concat(reference(resourceId('Microsoft.Cache/Redis', variables('redisName'))).hostName, ':6380,ssl=true,password=',
+                             listKeys(resourceId('Microsoft.Cache/Redis', variables('redisName')), '2020-06-01').primaryKey,',abortConnect=False')]",
+                        "useFromLocation": "default"
+                    }
+                },
+                {
+                    "type": "apis",
+                    "apiVersion": "2020-12-01",
+                    "comments": "This is the mock API",
+                    "location": "[resourceGroup().location]",
+                    "name": "mock-api",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]"
+                    ],
+                    "properties": {
+                        "description": "This is a Mock API",
+                        "displayName": "Mock API",
+                        "serviceUrl": "http://127.0.0.1/mock-api",
+                        "path": "/mock-api",
+                        "subscriptionRequired": false,
+                        "protocols": [
+                            "http"
+                        ]
+                    },
+                    "resources": [
+                        {
+                            "name": "get-operation",
+                            "apiVersion": "2020-12-01",
+                            "type": "operations",
+                            "location": "[resourceGroup().location]",
+                            "dependsOn": [
+                                "[concat('Microsoft.ApiManagement/service/', variables('apimName'), '/apis/mock-api')]"
+                            ],
+                            "properties": {
+                                "displayName": "GET mock",
+                                "description": "Gets a mock response",
+                                "method": "GET",
+                                "urlTemplate": "/"
+                           },
+                            "resources": [
+                                {
+                                    "type": "policies",
+                                    "name": "policy",
+                                    "apiVersion": "2020-12-01",
+                                    "location": "[resourceGroup().location]",
+                                    "dependsOn": [
+                                        "[concat('Microsoft.ApiManagement/service/', variables('apimName'), '/caches/externalRedis')]",
+                                        "[concat('Microsoft.ApiManagement/service/', variables('apimName'), '/apis/mock-api/operations/get-operation')]"
+                                    ],
+                                    "properties": {
+                                        "value": "<policies><inbound><base/><cache-lookup vary-by-developer=\"false\" vary-by-developer-groups=\"false\" downstream-caching-type=\"public\" must-revalidate=\"true\" caching-type=\"external\"><vary-by-header>Accept</vary-by-header><vary-by-header>Accept-Charset</vary-by-header></cache-lookup><return-response><set-status code=\"200\" reason=\"OK\" /><set-body>{\"value\":\"Mock response\"}</set-body></return-response></inbound><backend><base/></backend><outbound><base/><cache-store duration=\"3600\" /></outbound><on-error><base/></on-error></policies>"
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
