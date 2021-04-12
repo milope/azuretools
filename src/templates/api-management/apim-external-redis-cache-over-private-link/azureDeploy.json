@@ -19,6 +19,20 @@
             "metadata": {
                 "description": "This will be the APIM Publisher E-Mail"
             }
+        },
+        "apimVnetType": {
+            "type": "string",
+            "metadata": {
+                "description": "Specify the APIM vnet type (External or Internal)"
+            },
+            "allowedValues": ["External", "Internal"],
+            "defaultValue": "External"
+        },
+        "myIP": {
+            "type": "string",
+            "metadata": {
+                "description": "Place your IP here to add to network security groups"
+            }
         }
     },
     "variables": {
@@ -28,8 +42,11 @@
         "redisName": "[concat(parameters('resourcePrefix'), 'Redis')]",
         "redisPrivateEndpointName": "RedisPrivateEndpopint",
         "redisPrivateLinkConnectionName": "RedisPrivateLinkConnection",
+        "substringLength": "[sub(length(environment().resourceManager), 1)]",
+        "resourceManager": "[substring(environment().resourceManager,0, variables('substringLength'))]",
         "apimName": "[concat(parameters('resourcePrefix'), 'apim')]",
-        "resourceManager": "[substring(environment().resourceManager,0,sub(length(environment().resourceManager), 1))]",
+        "nsgName": "[concat(parameters('resourcePrefix'), 'SecurityGroups')]",
+        "blankNsgName": "[concat(parameters('resourcePrefix'), 'EmptySecurityGroups')]",
         "redisSuffixes": {
             "AzureCloud": ".redis.cache.windows.net",
             "AzureUSGovernment": ".redis.cache.usgovcloudapi.net",
@@ -40,11 +57,261 @@
     },
     "resources": [
         {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2020-08-01",
+            "name": "[variables('nsgName')]",
+            "comments": "Network Security Group for APIM subnet",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [],
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "AllowInMyIP",
+                        "properties": {
+                            "description": "Allows my ip through the NSG to access APIM",
+                            "destinationPortRanges": ["80","443","3443"],
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "direction": "Inbound",
+                            "priority": 100,
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "[parameters('myIP')]",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "APIMInRule1",
+                        "properties": {
+                            "description": "APIM required inbound rule 1",
+                            "destinationPortRange": "3443",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "direction": "Inbound",
+                            "priority": 101,
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "ApiManagement",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "APIMInRule2",
+                        "properties": {
+                            "description": "APIM required inbound rule 2",
+                            "destinationPortRange": "6381-6383",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "direction": "Inbound",
+                            "priority": 102,
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "APIMINRule3",
+                        "properties": {
+                            "description": "APIM required inbound rule 3",
+                            "destinationPortRange": "4290",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "direction": "Inbound",
+                            "priority": 103,
+                            "protocol": "Udp",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "APIMInRule4",
+                        "properties": {
+                            "description": "APIM required inbound rule 4",
+                            "destinationPortRange": "4290",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "direction": "Inbound",
+                            "priority": 104,
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "AzureLoadBalancer",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "AllowOutMyIP",
+                        "properties": {
+                            "description": "Allows my ip through the NSG to access APIM",
+                            "destinationPortRange": "*",
+                            "destinationAddressPrefix": "[parameters('myIP')]",
+                            "access": "Allow",
+                            "direction": "Outbound",
+                            "priority": 100,
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "APIMOutRule1",
+                        "properties": {
+                            "description": "APIM required outbound rule 1",
+                            "destinationPortRange": "443",
+                            "destinationAddressPrefix": "Storage",
+                            "access": "Allow",
+                            "direction": "Outbound",
+                            "priority": 101,
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "APIMOutRule2",
+                        "properties": {
+                            "description": "APIM required outbound rule 2",
+                            "destinationPortRange": "443",
+                            "destinationAddressPrefix": "AzureActiveDirectory",
+                            "access": "Allow",
+                            "direction": "Outbound",
+                            "priority": 102,
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "APIMOutRule3",
+                        "properties": {
+                            "description": "APIM required outbound rule 3",
+                            "destinationPortRange": "1433",
+                            "destinationAddressPrefix": "SQL",
+                            "access": "Allow",
+                            "direction": "Outbound",
+                            "priority": 103,
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "APIMOutRule4",
+                        "properties": {
+                            "description": "APIM required outbound rule 4",
+                            "destinationPortRange": "443",
+                            "destinationAddressPrefix": "AzureKeyVault",
+                            "access": "Allow",
+                            "direction": "Outbound",
+                            "priority": 104,
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "APIMOutRule5",
+                        "properties": {
+                            "description": "APIM required outbound rule 5",
+                            "destinationPortRanges": ["5671", "5672", "443"],
+                            "destinationAddressPrefix": "EventHub",
+                            "access": "Allow",
+                            "direction": "Outbound",
+                            "priority": 105,
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "APIMOutRule6",
+                        "properties": {
+                            "description": "APIM required outbound rule 6",
+                            "destinationPortRange": "445",
+                            "destinationAddressPrefix": "Storage",
+                            "access": "Allow",
+                            "direction": "Outbound",
+                            "priority": 106,
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "APIMOutRule7",
+                        "properties": {
+                            "description": "APIM required outbound rule 7",
+                            "destinationPortRanges": ["443", "12000"],
+                            "destinationAddressPrefix": "AzureCloud",
+                            "access": "Allow",
+                            "direction": "Outbound",
+                            "priority": 107,
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "APIMOutRule8",
+                        "properties": {
+                            "description": "APIM required outbound rule 8",
+                            "destinationPortRanges": ["1886", "443"],
+                            "destinationAddressPrefix": "AzureMonitor",
+                            "access": "Allow",
+                            "direction": "Outbound",
+                            "priority": 108,
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "APIMOutRule9",
+                        "properties": {
+                            "description": "APIM required outbound rule 9",
+                            "destinationPortRanges": ["25", "587", "25028"],
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "direction": "Outbound",
+                            "priority": 109,
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "APIMOutRule10",
+                        "properties": {
+                            "description": "APIM required outbound rule 10",
+                            "destinationPortRange": "4290",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "access": "Allow",
+                            "direction": "Outbound",
+                            "priority": 110,
+                            "protocol": "Udp",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "sourcePortRange": "*"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2020-08-01",
+            "comments": "This is a blank NSG for the private endpoint subnet",
+            "dependsOn": [],
+            "name": "[variables('blankNsgName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": []
+            }
+        },
+        {
             "type": "Microsoft.Network/virtualNetworks",
             "apiVersion": "2020-08-01",
             "name": "[variables('vnetName')]",
             "comments": "This will be the VNET where both APIM and the private link will reside",
-            "dependsOn": [],
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('blankNsgName'))]"
+            ],
             "location": "[resourceGroup().location]",
             "properties": {
                 "addressSpace": {
@@ -56,13 +323,19 @@
                     {
                         "name": "[variables('apimSubnetName')]",
                         "properties": {
-                            "addressPrefix": "192.168.0.0/25"
+                            "addressPrefix": "192.168.0.0/25",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+                            }
                         }
                     },
                     {
                         "name": "[variables('redisPESubnetName')]",
                         "properties": {
                             "addressPrefix": "192.168.0.128/25",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('blankNsgName'))]"
+                            },
                             "privateEndpointNetworkPolicies": "Disabled",
                             "privateLinkServiceNetworkPolicies": "Disabled"
                         }
@@ -80,7 +353,10 @@
             "location": "[resourceGroup().location]",
             "name": "[concat(variables('vnetName'), '/', concat(variables('apimSubnetName')))]",
             "properties": {
-                "addressPrefix": "192.168.0.0/25"
+                "addressPrefix": "192.168.0.0/25",
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+                }
             }
         },
         {
@@ -94,6 +370,9 @@
             "name": "[concat(variables('vnetName'), '/', concat(variables('redisPESubnetName')))]",
             "properties": {
                 "addressPrefix": "192.168.0.128/25",
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('blankNsgName'))]"
+                },
                 "privateEndpointNetworkPolicies": "Disabled",
                 "privateLinkServiceNetworkPolicies": "Disabled"
             }
@@ -208,7 +487,7 @@
                 "[resourceId('Microsoft.Cache/Redis', variables('redisName'))]"
             ],
             "properties": {
-                "virtualNetworkType": "External",
+                "virtualNetworkType": "[parameters('apimVnetType')]",
                 "virtualNetworkConfiguration": {
                     "subnetResourceId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('apimSubnetName'))]"
                 },
@@ -220,7 +499,7 @@
                     "type": "caches",
                     "apiVersion": "2020-12-01",
                     "comments": "External Cache for Redis",
-                    "name": "externalRedis",
+                    "name": "default",
                     "dependsOn": [
                         "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]",
                         "[resourceId('Microsoft.Cache/Redis', variables('redisName'))]"
@@ -229,8 +508,7 @@
                     "properties": {
                         "description": "External Cache for Redis using private link",
                         "resourceId": "[concat(variables('resourceManager'), resourceId('Microsoft.Cache/Redis', variables('redisName')))]",
-                        "connectionString": "[concat(reference(resourceId('Microsoft.Cache/Redis', variables('redisName'))).hostName, ':6380,ssl=true,password=',
-                             listKeys(resourceId('Microsoft.Cache/Redis', variables('redisName')), '2020-06-01').primaryKey,',abortConnect=False')]",
+                        "connectionString": "[concat(reference(resourceId('Microsoft.Cache/Redis', variables('redisName'))).hostName, ':', reference(resourceId('Microsoft.Cache/Redis', variables('redisName'))).sslPort, ',ssl=true,password=', listKeys(resourceId('Microsoft.Cache/Redis', variables('redisName')), '2020-06-01').primaryKey,',abortConnect=False')]",
                         "useFromLocation": "default"
                     }
                 },
@@ -275,11 +553,11 @@
                                     "apiVersion": "2020-12-01",
                                     "location": "[resourceGroup().location]",
                                     "dependsOn": [
-                                        "[concat('Microsoft.ApiManagement/service/', variables('apimName'), '/caches/externalRedis')]",
+                                        "[concat('Microsoft.ApiManagement/service/', variables('apimName'), '/caches/default')]",
                                         "[concat('Microsoft.ApiManagement/service/', variables('apimName'), '/apis/mock-api/operations/get-operation')]"
                                     ],
                                     "properties": {
-                                        "value": "<policies><inbound><base/><cache-lookup vary-by-developer=\"false\" vary-by-developer-groups=\"false\" downstream-caching-type=\"public\" must-revalidate=\"true\" caching-type=\"external\"><vary-by-header>Accept</vary-by-header><vary-by-header>Accept-Charset</vary-by-header></cache-lookup><return-response><set-status code=\"200\" reason=\"OK\" /><set-body>{\"value\":\"Mock response\"}</set-body></return-response></inbound><backend><base/></backend><outbound><base/><cache-store duration=\"3600\" /></outbound><on-error><base/></on-error></policies>"
+                                        "value": "<policies><inbound><base/><cache-lookup vary-by-developer=\"false\" vary-by-developer-groups=\"false\" downstream-caching-type=\"public\" must-revalidate=\"true\" caching-type=\"external\"><vary-by-header>Accept</vary-by-header><vary-by-header>Accept-Charset</vary-by-header></cache-lookup><return-response><set-status code=\"200\" reason=\"OK\" /><set-body>{\"value\":\"Mock response\"}</set-body></return-response></inbound><backend><base/></backend><outbound><cache-store duration=\"3600\" /><base/></outbound><on-error><base/></on-error></policies>"
                                     }
                                 }
                             ]

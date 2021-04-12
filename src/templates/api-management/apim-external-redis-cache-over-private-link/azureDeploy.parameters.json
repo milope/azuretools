@@ -10,6 +10,12 @@
         },
         "apimPublisherEMail": {
             "value": "GEN-PUBLISHER-EMAIL"
+        },
+        "MyIP": {
+            "value": "GEN-YOUR-IP"
+        },
+        "apimVnetType": {
+            "value": "GEN-VNET-TYPE"
         }
     }
 }

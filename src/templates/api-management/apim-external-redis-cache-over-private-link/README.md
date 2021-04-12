@@ -17,10 +17,16 @@ The parameters for this template as as follows:
 1. 'resourcePrefix': This string will prefix all resource names.
 2. 'apimPublisherName': The name of the publisher for both APIM services.
 3. 'apimPublisherEMail': The e-mail address of the publisher for both APIM services.
+4. 'apimVnetType': The VNET type for APIM. This value can only be 'External' or 'Internal'. As APIM will be connecting to Redis via private endpoint, APIM cannot be of a None VNET type.
+5. 'myIP': Specify your external IP (run curl ifconfig.me) to allow through the NSG that is created for APIM.
 
 # Output
 
 This template does not produce an output.
+
+# Remarks
+
+Please note that due to some sort of delay in the Azure Network Resource applying private endpoint-related policies, this template can fail with an error stating that the subnet used for the private endpoint does not have private endpoint policies enabled. If you run into this issue, please try re-deploy this template.
 
 __IMPORTANT NOTE:__ Please note this template is for EDUCATIONAL PURPOSES ONLY and is provided AS IS without any warranty. Please note Microsoft may not support issues caused by using this template nor may support the template itself. Please file an issue against this repo and I will be happy to take a look.
 
