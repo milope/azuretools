@@ -1,0 +1,51 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "ResourcePrefix": {
+            "type": "string",
+            "metadata": {
+                "description": "Provide a prefix for the resource"
+            }
+        }
+    },
+    "variables": {
+        "namespaceName": "[concat(parameters('ResourcePrefix'), 'eh')]",
+        "eventHubNames": ["eh-one","eh-two","eh-three"]
+    },
+    "resources": [
+        {
+            "type": "Microsoft.EventHub/namespaces",
+            "name": "[variables('namespaceName')]",
+            "apiVersion": "2021-01-01-preview",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Standard",
+                "tier": "Standard"
+            },
+            "tags": {
+                "Lab": "Event Hubs with multiple namespaces"
+            },
+            "properties": {
+                "isAutoInflateEnabled": false
+            }
+        },
+        {
+            "type": "Microsoft.EventHub/namespaces/eventhubs",
+            "name": "[concat(variables('namespaceName'), '/',variables('eventHubNames')[copyIndex('eventHubCopy')])]",
+            "apiVersion": "2021-01-01-preview",
+            "location": "[resourceGroup().location]",
+            "copy": {
+                "name": "eventHubCopy",
+                "count": 3
+            },
+            "properties": {
+                "messageRetentionInDays": 7,
+                "partitionCount": 4
+            },
+            "dependsOn": [
+                "[variables('namespaceName')]"
+            ]
+        }
+    ]
+}
