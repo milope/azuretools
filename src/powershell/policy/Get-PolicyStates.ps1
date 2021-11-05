@@ -27,7 +27,7 @@ param(
 
 $context = Get-AzContext
 if($null -eq $context -or $null -eq $context.Account) {
-    Connect-AzContext
+    Connect-AzContext -Environment $Environment
 }
 
 $subscriptionId = $context.Subscription.Id
