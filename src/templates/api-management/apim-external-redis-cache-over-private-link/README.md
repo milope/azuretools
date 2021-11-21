@@ -8,13 +8,9 @@ This template is a sample that demonstrates an API Management using Azure Cache 
 
 ## Intent
 
----
-
 The intent behind this template is to show that APIM can connect to Azure Cache Redis as an external cache via a Private Endpoint.
 
 ## Parameters
-
----
 
 The parameters for this template as as follows:
 
@@ -26,19 +22,13 @@ The parameters for this template as as follows:
 
 ## Output
 
----
-
 This template does not produce an output.
 
 ## Remarks
 
----
-
 Please note that due to some sort of delay in the Azure Network Resource applying private endpoint-related policies, this template can fail with an error stating that the subnet used for the private endpoint does not have private endpoint policies enabled. If you run into this issue, please try re-deploy this template.
 
 ## License/Disclaimer
-
----
 
 Copyright © 2021 Michael Lopez
 

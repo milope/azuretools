@@ -2,8 +2,6 @@
 
 ## Introduction
 
----
-
 In a normal SSL TLS setup, a server would present a server certificate and a client would be tasked with validating the presented certificate. With mutual TLS, both the server and client would require to present a certificate that the receiving side would need to validate.
 
 The main challenge with mutual TLS presents itself on a topology where we would have a de-militarized zone (DMZ) hosting an external layer-7 reverse proxy that would then forward web requests to a private backend web server where this web server would require a client certificate for authentication.
@@ -16,15 +14,11 @@ In a scenario where the backend web server requires a client certificate for aut
 
 ## So, What Do We Do?
 
----
-
 The idea at this point is to have the reasonable expectation that, unless we manually upload a client certificate and private key to the reverse proxy, we will need to use another mechanism to forward the certificate and the receiving server will have to trust that the reverse proxy performed a successful and valid mutual TLS authentication with an authorized client certificate.
 
 This example is an attempt to achieve this configuration by having Application Gateway v2 SKU perform the mutual TLS handshake and forward the certificate and its properties via HTTP headers to the backend. Azure API Management will serve as the backend and will receive the certificate headers via policy and echo them as HTML. Additionally, Application Gateway will forward the certificate in base-64 encoding, however, this example will not make use of the certificate itself.
 
 ## Template Parameters
-
----
 
 This is my first Bicep template being published and it will contain the following parameters:
 
@@ -43,8 +37,6 @@ This is my first Bicep template being published and it will contain the followin
 
 ## Template Resources
 
----
-
 - **Network Security Groups (x2):** There will be 2 separate network security groups. One will be for Application Gateway's subnet, which will allow for the "MyIP" IP address to be allowed and for the Health Probes as well. The other network security group will be used to lock APIM so that it only receives traffic from Application Gateway and the API Management Control Plane.
 - **Virtual Network:** The virtual network will have 2 subnets, one to host Application Gateway computes and another to host API Management computes.
 - **Public IP Addresses (x2):** There will be two static Standard public IP addresses, one for Application Gateway and the other for API Management's management APIs.
@@ -53,8 +45,6 @@ This is my first Bicep template being published and it will contain the followin
 - **Application Gateway:** The Application Gateway will be used to perform the true mutual TLS and will be configured with header rewrites to forward the certificate and its properties to API Management as headers.
 
 ## License/Disclaimer
-
----
 
 Copyright © 2021 Michael Lopez
 Permission is hereby granted, free of charge, to any person obtaining a copy of
