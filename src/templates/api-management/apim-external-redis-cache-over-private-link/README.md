@@ -6,11 +6,15 @@
 
 This template is a sample that demonstrates an API Management using Azure Cache for Redis as an external cache. The connection will be performed over the Private Endpoint and not via a public IP.
 
-# Intent
+## Intent
+
+---
 
 The intent behind this template is to show that APIM can connect to Azure Cache Redis as an external cache via a Private Endpoint.
 
-# Parameters
+## Parameters
+
+---
 
 The parameters for this template as as follows:
 
@@ -20,15 +24,21 @@ The parameters for this template as as follows:
 4. 'apimVnetType': The VNET type for APIM. This value can only be 'External' or 'Internal'. As APIM will be connecting to Redis via private endpoint, APIM cannot be of a None VNET type.
 5. 'myIP': Specify your external IP (run curl ifconfig.me) to allow through the NSG that is created for APIM.
 
-# Output
+## Output
+
+---
 
 This template does not produce an output.
 
-# Remarks
+## Remarks
+
+---
 
 Please note that due to some sort of delay in the Azure Network Resource applying private endpoint-related policies, this template can fail with an error stating that the subnet used for the private endpoint does not have private endpoint policies enabled. If you run into this issue, please try re-deploy this template.
 
-# License/Disclaimer
+## License/Disclaimer
+
+---
 
 Copyright © 2021 Michael Lopez
 
