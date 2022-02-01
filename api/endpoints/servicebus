@@ -1,0 +1,6 @@
+{
+    "AzureCloud": ".servicebus.windows.net",
+    "AzureUSGovernment": ".servicebus.usgovcloudapi.net",
+    "AzureChinaCloud": ".servicebus.chinacloudapi.cn",
+    "AzureGermanCloud": ".servicebus.cloudapi.de"
+}
