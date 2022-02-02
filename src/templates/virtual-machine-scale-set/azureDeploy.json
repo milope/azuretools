@@ -1,0 +1,166 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.4.1008.15138",
+      "templateHash": "14174721727090377719"
+    }
+  },
+  "parameters": {
+    "ResourcePrefix": {
+      "type": "string",
+      "maxLength": 3,
+      "minLength": 1,
+      "metadata": {
+        "description": "This will be a prefix for all virtual machine scale sets"
+      }
+    },
+    "Username": {
+      "type": "string",
+      "maxLength": 15,
+      "metadata": {
+        "description": "This will be the username for all virtual machine scale sets"
+      }
+    },
+    "Password": {
+      "type": "secureString",
+      "maxLength": 30,
+      "metadata": {
+        "description": "This will be the username for all virtual machine scale sets"
+      }
+    },
+    "Amount": {
+      "type": "int",
+      "maxValue": 798,
+      "minValue": 1,
+      "metadata": {
+        "description": "Specify the number of virtual machine scale sets"
+      }
+    }
+  },
+  "functions": [],
+  "variables": {
+    "tags": {
+      "LabCreatedBy": "Michael Lopez",
+      "LabCreatedOn": "2022-01-28",
+      "LabVersion": "1.0",
+      "LabCategory": "Virtual Machine Scale Sets"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2021-06-01",
+      "name": "[format('mlosdisk{0}', uniqueString(resourceGroup().id))]",
+      "kind": "Storage",
+      "tags": "[variables('tags')]",
+      "location": "[resourceGroup().location]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "properties": {
+        "supportsHttpsTrafficOnly": false
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2021-03-01",
+      "name": "[format('{0}-vnet', parameters('ResourcePrefix'))]",
+      "location": "[resourceGroup().location]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.0.0.0/8"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "Default",
+            "properties": {
+              "addressPrefix": "10.0.0.0/8"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "copy": {
+        "name": "VMSS",
+        "count": "[length(range(0, parameters('Amount')))]"
+      },
+      "type": "Microsoft.Compute/virtualMachineScaleSets",
+      "apiVersion": "2021-07-01",
+      "name": "[format('{0}vmss{1}', parameters('ResourcePrefix'), padLeft(string(add(range(0, parameters('Amount'))[copyIndex()], 1)), 4, '0'))]",
+      "location": "[resourceGroup().location]",
+      "tags": "[variables('tags')]",
+      "sku": {
+        "tier": "Basic",
+        "capacity": 0,
+        "name": "Basic_A0"
+      },
+      "properties": {
+        "overprovision": false,
+        "virtualMachineProfile": {
+          "storageProfile": {
+            "osDisk": {
+              "caching": "ReadWrite",
+              "vhdContainers": [
+                "[format('{0}/vhds', reference(resourceId('Microsoft.Storage/storageAccounts', format('mlosdisk{0}', uniqueString(resourceGroup().id)))).primaryEndpoints.blob)]"
+              ],
+              "name": "osdisk",
+              "createOption": "FromImage"
+            },
+            "imageReference": {
+              "sku": "2019-Datacenter",
+              "publisher": "MicrosoftWindowsServer",
+              "version": "latest",
+              "offer": "WindowsServer"
+            }
+          },
+          "osProfile": {
+            "computerNamePrefix": "mlvmss",
+            "adminUsername": "[parameters('Username')]",
+            "adminPassword": "[parameters('Password')]",
+            "windowsConfiguration": {
+              "enableAutomaticUpdates": false,
+              "provisionVMAgent": false
+            }
+          },
+          "networkProfile": {
+            "networkInterfaceConfigurations": [
+              {
+                "name": "vmss",
+                "properties": {
+                  "ipConfigurations": [
+                    {
+                      "name": "ip-config",
+                      "properties": {
+                        "primary": true,
+                        "privateIPAddressVersion": "IPv4",
+                        "subnet": {
+                          "id": "[format('{0}/subnets/Default', resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('ResourcePrefix'))))]"
+                        }
+                      }
+                    }
+                  ],
+                  "enableAcceleratedNetworking": false,
+                  "primary": true
+                }
+              }
+            ]
+          }
+        },
+        "upgradePolicy": {
+          "mode": "Automatic"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', format('mlosdisk{0}', uniqueString(resourceGroup().id)))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('ResourcePrefix')))]"
+      ]
+    }
+  ]
+}
