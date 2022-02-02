@@ -1,0 +1,1076 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.4.1008.15138",
+      "templateHash": "17696776155514045414"
+    }
+  },
+  "parameters": {
+    "ResourcePrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "Use this parameter to prefix all resources created"
+      }
+    },
+    "MyIP": {
+      "type": "string",
+      "metadata": {
+        "description": "Pass your IP Address to allow through NSG"
+      }
+    },
+    "RedisVNetAddressRange": {
+      "type": "string",
+      "defaultValue": "10.0.1.0/24",
+      "metadata": {
+        "description": "Use this value to represent the Redis spoke VNET and Subnet spoke address space."
+      }
+    },
+    "HubVNetAddressRange": {
+      "type": "string",
+      "defaultValue": "10.0.0.0/24",
+      "metadata": {
+        "description": "Azure Firewall and Bastion Hub VNET address space."
+      }
+    }
+  },
+  "functions": [],
+  "variables": {
+    "tags": {
+      "LabCreatedBy": "Michael Lopez",
+      "LabCreatedOn": "2022-01-15",
+      "LabVersion": "1.0",
+      "LabCategory": "Cache for Redis"
+    },
+    "initSuffix": "core",
+    "latterSuffix": ".windows.net",
+    "monitorEndpointSuffix": "[format('{0}{1}', variables('initSuffix'), variables('latterSuffix'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2021-06-01",
+      "name": "[format('flowlogs{0}', uniqueString(resourceGroup().id))]",
+      "location": "[resourceGroup().location]",
+      "tags": "[variables('tags')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "StorageV2",
+      "properties": {}
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2021-06-01",
+      "name": "[format('{0}-oms', parameters('ResourcePrefix'))]",
+      "location": "[resourceGroup().location]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "publicNetworkAccessForIngestion": "Enabled",
+        "publicNetworkAccessForQuery": "Enabled",
+        "retentionInDays": 30,
+        "sku": {
+          "name": "PerGB2018"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2021-03-01",
+      "name": "[format('{0}-redis-nsg', parameters('ResourcePrefix'))]",
+      "location": "[resourceGroup().location]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "inbound-allowme",
+            "properties": {
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "*",
+              "description": "Allow me through anything",
+              "destinationAddressPrefix": "VirtualNetwork",
+              "destinationPortRange": "*",
+              "priority": 100,
+              "sourceAddressPrefix": "[format('{0}/32', parameters('MyIP'))]",
+              "sourcePortRange": "*"
+            }
+          },
+          {
+            "name": "outbound-allowme",
+            "properties": {
+              "access": "Allow",
+              "direction": "Outbound",
+              "protocol": "*",
+              "description": "Allow me through anything",
+              "destinationAddressPrefix": "[format('{0}/32', parameters('MyIP'))]",
+              "destinationPortRange": "*",
+              "priority": 101,
+              "sourceAddressPrefix": "VirtualNetwork",
+              "sourcePortRange": "*"
+            }
+          },
+          {
+            "name": "inbound-redis-clients",
+            "properties": {
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "Tcp",
+              "description": "Client communication to Redis, Azure Load Balancing",
+              "destinationAddressPrefixes": [
+                "[parameters('RedisVNetAddressRange')]"
+              ],
+              "destinationPortRanges": [
+                "6379-6380",
+                "10221-10231",
+                "13000-13999",
+                "15000-15999"
+              ],
+              "priority": 102,
+              "sourceAddressPrefixes": [
+                "[parameters('RedisVNetAddressRange')]",
+                "[parameters('HubVNetAddressRange')]"
+              ],
+              "sourcePortRange": "*"
+            }
+          },
+          {
+            "name": "inbound-redis-internal-comm",
+            "properties": {
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "Tcp",
+              "description": "Internal communications for Redis",
+              "destinationAddressPrefixes": [
+                "[parameters('RedisVNetAddressRange')]"
+              ],
+              "destinationPortRanges": [
+                "8443",
+                "10221-10231",
+                "20226"
+              ],
+              "priority": 103,
+              "sourceAddressPrefix": "[parameters('RedisVNetAddressRange')]",
+              "sourcePortRange": "*"
+            }
+          },
+          {
+            "name": "inbound-azure-slb",
+            "properties": {
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "*",
+              "description": "Azure Load Balancing",
+              "destinationAddressPrefix": "[parameters('RedisVNetAddressRange')]",
+              "destinationPortRanges": [
+                "6379-6380",
+                "8500",
+                "13000-13999",
+                "15000-15999",
+                "16001"
+              ],
+              "priority": 104,
+              "sourceAddressPrefix": "AzureLoadBalancer",
+              "sourcePortRange": "*"
+            }
+          },
+          {
+            "name": "outbound-redis-internal-comm",
+            "properties": {
+              "access": "Allow",
+              "direction": "Outbound",
+              "protocol": "Tcp",
+              "description": "Internal communications for Redis",
+              "destinationAddressPrefixes": [
+                "[parameters('RedisVNetAddressRange')]"
+              ],
+              "destinationPortRanges": [
+                "6379-6380",
+                "8443",
+                "10221-10231",
+                "13000-13999",
+                "15000-15999",
+                "20226"
+              ],
+              "priority": 105,
+              "sourceAddressPrefixes": [
+                "[parameters('RedisVNetAddressRange')]"
+              ],
+              "sourcePortRange": "*"
+            }
+          },
+          {
+            "name": "outbound-redis-dns",
+            "properties": {
+              "access": "Allow",
+              "direction": "Outbound",
+              "protocol": "*",
+              "description": "Redis dependencies on DNS",
+              "destinationAddressPrefixes": [
+                "168.63.129.16",
+                "169.254.169.254"
+              ],
+              "destinationPortRanges": [
+                "53"
+              ],
+              "priority": 106,
+              "sourceAddressPrefixes": [
+                "[parameters('RedisVNetAddressRange')]"
+              ],
+              "sourcePortRange": "*"
+            }
+          },
+          {
+            "name": "outbound-redis-web-dependencies",
+            "properties": {
+              "access": "Allow",
+              "direction": "Outbound",
+              "protocol": "*",
+              "description": "This should allow connections to Storage, PKI, Azure Key Vault and Azure Monitor",
+              "destinationAddressPrefix": "*",
+              "destinationPortRanges": [
+                "80",
+                "443"
+              ],
+              "priority": 107,
+              "sourceAddressPrefix": "[parameters('RedisVNetAddressRange')]",
+              "sourcePortRange": "*"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2021-03-01",
+      "name": "[format('{0}-az-firewall-pip', parameters('ResourcePrefix'))]",
+      "tags": "[variables('tags')]",
+      "sku": {
+        "name": "Standard",
+        "tier": "Regional"
+      },
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "dnsSettings": {
+          "domainNameLabel": "[format('{0}fw', toLower(parameters('ResourcePrefix')))]"
+        },
+        "idleTimeoutInMinutes": 4,
+        "publicIPAddressVersion": "IPv4",
+        "publicIPAllocationMethod": "Static"
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkWatchers",
+      "apiVersion": "2021-03-01",
+      "name": "[format('{0}-nw', parameters('ResourcePrefix'))]",
+      "tags": "[variables('tags')]",
+      "location": "[resourceGroup().location]",
+      "properties": {}
+    },
+    {
+      "type": "Microsoft.Network/networkWatchers/flowLogs",
+      "apiVersion": "2021-03-01",
+      "name": "[format('{0}/flowlogs-redis', format('{0}-nw', parameters('ResourcePrefix')))]",
+      "tags": "[variables('tags')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "targetResourceId": "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-redis-nsg', parameters('ResourcePrefix')))]",
+        "storageId": "[resourceId('Microsoft.Storage/storageAccounts', format('flowlogs{0}', uniqueString(resourceGroup().id)))]",
+        "enabled": true,
+        "flowAnalyticsConfiguration": {
+          "networkWatcherFlowAnalyticsConfiguration": {
+            "enabled": true,
+            "workspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-oms', parameters('ResourcePrefix')))]",
+            "workspaceRegion": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-oms', parameters('ResourcePrefix'))), '2021-06-01', 'full').location]",
+            "workspaceId": "[reference(resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-oms', parameters('ResourcePrefix')))).customerId]",
+            "trafficAnalyticsInterval": 10
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', format('flowlogs{0}', uniqueString(resourceGroup().id)))]",
+        "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-oms', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/networkWatchers', format('{0}-nw', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-redis-nsg', parameters('ResourcePrefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2021-03-01",
+      "name": "[format('{0}-redis-vnet', parameters('ResourcePrefix'))]",
+      "tags": "[variables('tags')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[parameters('RedisVNetAddressRange')]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "redis-subnet",
+            "properties": {
+              "addressPrefix": "[parameters('RedisVNetAddressRange')]",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-redis-nsg', parameters('ResourcePrefix')))]"
+              }
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-redis-nsg', parameters('ResourcePrefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2021-03-01",
+      "name": "[format('{0}-hub-vnet', parameters('ResourcePrefix'))]",
+      "location": "[resourceGroup().location]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[parameters('HubVNetAddressRange')]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "AzureFirewallSubnet",
+            "properties": {
+              "addressPrefix": "[parameters('HubVNetAddressRange')]"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+      "apiVersion": "2021-03-01",
+      "name": "[format('{0}/redis-to-hub', format('{0}-redis-vnet', parameters('ResourcePrefix')))]",
+      "properties": {
+        "allowForwardedTraffic": true,
+        "allowVirtualNetworkAccess": true,
+        "remoteVirtualNetwork": {
+          "id": "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-hub-vnet', parameters('ResourcePrefix')))]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-hub-vnet', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-redis-vnet', parameters('ResourcePrefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+      "apiVersion": "2021-03-01",
+      "name": "[format('{0}/hub-to-redis', format('{0}-hub-vnet', parameters('ResourcePrefix')))]",
+      "properties": {
+        "allowForwardedTraffic": true,
+        "allowVirtualNetworkAccess": true,
+        "remoteVirtualNetwork": {
+          "id": "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-redis-vnet', parameters('ResourcePrefix')))]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-hub-vnet', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-redis-vnet', parameters('ResourcePrefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/firewallPolicies",
+      "apiVersion": "2021-03-01",
+      "name": "[format('{0}-fw-policy', parameters('ResourcePrefix'))]",
+      "tags": "[variables('tags')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "sku": {
+          "tier": "Standard"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Network/firewallPolicies/ruleCollectionGroups",
+      "apiVersion": "2021-03-01",
+      "name": "[format('{0}/forced-app-rule', format('{0}-fw-policy', parameters('ResourcePrefix')))]",
+      "properties": {
+        "priority": 1002,
+        "ruleCollections": [
+          {
+            "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+            "action": {
+              "type": "Allow"
+            },
+            "name": "forced-app-rule",
+            "priority": 1003,
+            "rules": [
+              {
+                "ruleType": "ApplicationRule",
+                "description": "This rule is to force application rule evaluation logic",
+                "name": "ForcedAppRule",
+                "protocols": [
+                  {
+                    "port": 443,
+                    "protocolType": "Https"
+                  },
+                  {
+                    "port": 80,
+                    "protocolType": "Http"
+                  }
+                ],
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ],
+                "targetFqdns": [
+                  "www.microsoft.com"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/firewallPolicies', format('{0}-fw-policy', parameters('ResourcePrefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/firewallPolicies/ruleCollectionGroups",
+      "apiVersion": "2021-03-01",
+      "name": "[format('{0}/redis-collection-groups', format('{0}-fw-policy', parameters('ResourcePrefix')))]",
+      "properties": {
+        "priority": 1000,
+        "ruleCollections": [
+          {
+            "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+            "action": {
+              "type": "Allow"
+            },
+            "name": "redis-deployment-rules",
+            "priority": 1001,
+            "rules": [
+              {
+                "ruleType": "ApplicationRule",
+                "name": "allow-storage",
+                "description": "Allow storage to allow for successful deployment",
+                "protocols": [
+                  {
+                    "port": 443,
+                    "protocolType": "Https"
+                  }
+                ],
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ],
+                "terminateTLS": false,
+                "targetFqdns": [
+                  "*.storage.azure.net",
+                  "[format('*.blob.{0}', environment().suffixes.storage)]",
+                  "[format('*.queue.{0}', environment().suffixes.storage)]",
+                  "[format('*.table.{0}', environment().suffixes.storage)]",
+                  "[format('*.file.{0}', environment().suffixes.storage)]"
+                ]
+              },
+              {
+                "ruleType": "ApplicationRule",
+                "name": "allow-pki",
+                "description": "Azure Microsoft PKI for successful deployment",
+                "protocols": [
+                  {
+                    "port": 80,
+                    "protocolType": "Http"
+                  }
+                ],
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ],
+                "terminateTLS": false,
+                "targetFqdns": [
+                  "crl.microsoft.com",
+                  "ocsp.digicert.com",
+                  "crl4.digicert.com",
+                  "ocsp.msocsp.com",
+                  "mscrl.microsoft.com",
+                  "crl3.digicert.com",
+                  "cacerts.digicert.com",
+                  "oneocsp.microsoft.com"
+                ]
+              },
+              {
+                "ruleType": "ApplicationRule",
+                "name": "allow-key-vault",
+                "description": "Allow storage to allow for successful deployment",
+                "protocols": [
+                  {
+                    "port": 443,
+                    "protocolType": "Https"
+                  }
+                ],
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ],
+                "terminateTLS": false,
+                "targetFqdns": [
+                  "[format('*{0}', environment().suffixes.keyvaultDns)]"
+                ]
+              }
+            ]
+          },
+          {
+            "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+            "action": {
+              "type": "Allow"
+            },
+            "name": "redis-dependency-rules-application",
+            "priority": 1002,
+            "rules": [
+              {
+                "ruleType": "ApplicationRule",
+                "description": "Allowing connections for Azure Monitor purposes",
+                "name": "allow-azure-monitor",
+                "protocols": [
+                  {
+                    "port": 443,
+                    "protocolType": "Https"
+                  }
+                ],
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ],
+                "targetFqdns": [
+                  "[format('gcs.prod.monitoring.{0}', variables('monitorEndpointSuffix'))]",
+                  "[format('*.prod.warm.ingest.monitor.{0}', variables('monitorEndpointSuffix'))]",
+                  "global.prod.microsoftmetrics.com",
+                  "[format('azurewatsonanalysis-prod.{0}', variables('monitorEndpointSuffix'))]",
+                  "azredis.prod.microsoftmetrics.com",
+                  "azredis-black.prod.microsoftmetrics.com",
+                  "azredis-red.prod.microsoftmetrics.com"
+                ]
+              },
+              {
+                "ruleType": "ApplicationRule",
+                "description": "Allowing connections to Event Hubs",
+                "name": "allow-azure-event-hubs",
+                "protocols": [
+                  {
+                    "port": 443,
+                    "protocolType": "Https"
+                  }
+                ],
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ],
+                "targetFqdns": [
+                  "*.servicebus.windows.net"
+                ]
+              },
+              {
+                "ruleType": "ApplicationRule",
+                "description": "Used for windows diagnostic data",
+                "name": "allow-windows-diagnostic-data",
+                "protocols": [
+                  {
+                    "port": 443,
+                    "protocolType": "Https"
+                  }
+                ],
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ],
+                "targetFqdns": [
+                  "v10.events.data.microsoft.com",
+                  "v10c.events.data.microsoft.com",
+                  "v10.vortex-win.data.microsoft.com",
+                  "watson.telemetry.microsoft.com",
+                  "watson.telemetry.microsoft.com",
+                  "watson.microsoft.com",
+                  "umwatson.events.data.microsoft.com",
+                  "umwatson.telemetry.data.microsoft.com",
+                  "*-umwatson.telemetry.data.microsoft.com",
+                  "umwatsonc.telemetry.microsoft.com",
+                  "umwatsonc.events.data.microsoft.com",
+                  "*-umwatsonc.events.data.microsoft.com",
+                  "[format('ceuswatcab01.blob.{0}', variables('monitorEndpointSuffix'))]",
+                  "[format('ceuswatcab02.blob.{0}', variables('monitorEndpointSuffix'))]",
+                  "[format('eaus2watcab01.blob.{0}', variables('monitorEndpointSuffix'))]",
+                  "[format('eaus2watcab02.blob.{0}', variables('monitorEndpointSuffix'))]",
+                  "[format('weus2watcab01.blob.{0}', variables('monitorEndpointSuffix'))]",
+                  "[format('weus2watcab02.blob.{0}', variables('monitorEndpointSuffix'))]",
+                  "oca.telemetry.microsoft.com",
+                  "oca.microsoft.com",
+                  "kmwatsonc.telemetry.microsoft.com",
+                  "*-kmwatsonc.telemetry.microsoft.com",
+                  "settings-win.data.microsoft.com",
+                  "*.live.com"
+                ]
+              },
+              {
+                "ruleType": "ApplicationRule",
+                "description": "Used for windows update",
+                "name": "allow-windows-update",
+                "protocols": [
+                  {
+                    "port": 443,
+                    "protocolType": "Https"
+                  },
+                  {
+                    "port": 80,
+                    "protocolType": "Http"
+                  }
+                ],
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ],
+                "targetFqdns": [
+                  "ctldl.windowsupdate.com",
+                  "*.update.microsoft.com",
+                  "*.windowsupdate.com",
+                  "emdl.ws.microsoft.com",
+                  "delivery.mp.microsoft.com",
+                  "*.delivery.mp.microsoft.com",
+                  "*.do.dsp.mp.microsoft.com"
+                ]
+              },
+              {
+                "ruleType": "ApplicationRule",
+                "description": "Used for connectivity testing",
+                "name": "allow-connectivity-test",
+                "protocols": [
+                  {
+                    "port": 80,
+                    "protocolType": "Http"
+                  }
+                ],
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ],
+                "targetFqdns": [
+                  "www.msftconnecttest.com"
+                ]
+              },
+              {
+                "ruleType": "ApplicationRule",
+                "description": "Used for Windows Device Metadata",
+                "name": "allow-windows-device-metadata",
+                "protocols": [
+                  {
+                    "port": 443,
+                    "protocolType": "Https"
+                  }
+                ],
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ],
+                "targetFqdns": [
+                  "dmd.metaservices.microsoft.com"
+                ]
+              },
+              {
+                "ruleType": "ApplicationRule",
+                "description": "Used for Windows Defender",
+                "name": "allow-windows-defender-https",
+                "protocols": [
+                  {
+                    "port": 443,
+                    "protocolType": "Https"
+                  }
+                ],
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ],
+                "targetFqdns": [
+                  "wdcp.microsoft.com",
+                  "wdcpalt.microsoft.com",
+                  "*smartscreen.microsoft.com",
+                  "definitionupdates.microsoft.com",
+                  "smartscreen-sn3p.smartscreen.microsoft.com",
+                  "unitedstates.smartscreen-prod.microsoft.com"
+                ]
+              },
+              {
+                "ruleType": "ApplicationRule",
+                "description": "Used for Windows Defender",
+                "name": "allow-windows-defender-http",
+                "protocols": [
+                  {
+                    "port": 80,
+                    "protocolType": "Http"
+                  }
+                ],
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ],
+                "targetFqdns": [
+                  "dmd.metaservices.microsoft.com"
+                ]
+              },
+              {
+                "ruleType": "ApplicationRule",
+                "description": "Used for Windows Activation",
+                "name": "allow-windows-activation-https",
+                "protocols": [
+                  {
+                    "port": 443,
+                    "protocolType": "Https"
+                  }
+                ],
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ],
+                "targetFqdns": [
+                  "go.microsoft.com",
+                  "validation-v2.sls.microsoft.com",
+                  "activation.sls.microsoft.com",
+                  "validation.sls.microsoft.com",
+                  "activation-v2.sls.microsoft.com",
+                  "displaycatalog.mp.microsoft.com",
+                  "*.displaycatalog.mp.microsoft.com",
+                  "licensing.mp.microsoft.com",
+                  "*.licensing.mp.microsoft.com",
+                  "purchase.mp.microsoft.com",
+                  "*.purchase.mp.microsoft.com",
+                  "displaycatalog.md.mp.microsoft.com",
+                  "*.displaycatalog.md.mp.microsoft.com",
+                  "licensing.md.mp.microsoft.com",
+                  "*.licensing.md.mp.microsoft.com",
+                  "purchase.md.mp.microsoft.com",
+                  "*.purchase.md.mp.microsoft.com",
+                  "*.live.com"
+                ]
+              },
+              {
+                "ruleType": "ApplicationRule",
+                "description": "Used for Microsoft Store",
+                "name": "allow-microsoft-store",
+                "protocols": [
+                  {
+                    "port": 443,
+                    "protocolType": "Https"
+                  }
+                ],
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ],
+                "targetFqdns": [
+                  "clientconfig.passport.net"
+                ]
+              },
+              {
+                "ruleType": "ApplicationRule",
+                "description": "Used for Windows Activation",
+                "name": "allow-windows-activation-http",
+                "protocols": [
+                  {
+                    "port": 80,
+                    "protocolType": "Http"
+                  }
+                ],
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ],
+                "targetFqdns": [
+                  "go.microsoft.com"
+                ]
+              },
+              {
+                "ruleType": "ApplicationRule",
+                "description": "Used for unknown dependencies",
+                "name": "allow-unknown-dependencies-https",
+                "protocols": [
+                  {
+                    "port": 443,
+                    "protocolType": "Https"
+                  }
+                ],
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ],
+                "targetFqdns": [
+                  "shavamanifestcdnprod1.azureedge.net",
+                  "shavamanifestazurecdnprod1.azureedge.net",
+                  "azureprofilerfrontdoor.cloudapp.net"
+                ]
+              }
+            ]
+          },
+          {
+            "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+            "action": {
+              "type": "Allow"
+            },
+            "name": "redis-dependency-rules-network",
+            "priority": 1000,
+            "rules": [
+              {
+                "ruleType": "NetworkRule",
+                "description": "Adding Azure Monitor Network Rules",
+                "destinationAddresses": [
+                  "AzureCloud"
+                ],
+                "destinationPorts": [
+                  "12000"
+                ],
+                "ipProtocols": [
+                  "TCP"
+                ],
+                "name": "allow-azure-monitor-network",
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ]
+              },
+              {
+                "ruleType": "NetworkRule",
+                "description": "Adding KMS",
+                "destinationAddresses": [
+                  "AzureCloud"
+                ],
+                "destinationPorts": [
+                  "1688"
+                ],
+                "ipProtocols": [
+                  "TCP"
+                ],
+                "name": "allow-kms",
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ]
+              },
+              {
+                "ruleType": "NetworkRule",
+                "description": "Adding NTP",
+                "destinationAddresses": [
+                  "AzureCloud"
+                ],
+                "destinationPorts": [
+                  "123"
+                ],
+                "ipProtocols": [
+                  "UDP"
+                ],
+                "name": "allow-ntp",
+                "sourceAddresses": [
+                  "[parameters('RedisVNetAddressRange')]"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/firewallPolicies', format('{0}-fw-policy', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/firewallPolicies/ruleCollectionGroups', split(format('{0}/forced-app-rule', format('{0}-fw-policy', parameters('ResourcePrefix'))), '/')[0], split(format('{0}/forced-app-rule', format('{0}-fw-policy', parameters('ResourcePrefix'))), '/')[1])]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/azureFirewalls",
+      "apiVersion": "2021-03-01",
+      "name": "[format('{0}-fw', parameters('ResourcePrefix'))]",
+      "location": "[resourceGroup().location]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "firewallPolicy": {
+          "id": "[resourceId('Microsoft.Network/firewallPolicies', format('{0}-fw-policy', parameters('ResourcePrefix')))]"
+        },
+        "sku": {
+          "name": "AZFW_VNet",
+          "tier": "Standard"
+        },
+        "ipConfigurations": [
+          {
+            "name": "fw-public-ip",
+            "properties": {
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-az-firewall-pip', parameters('ResourcePrefix')))]"
+              },
+              "subnet": {
+                "id": "[format('{0}/subnets/AzureFirewallSubnet', resourceId('Microsoft.Network/virtualNetworks', format('{0}-hub-vnet', parameters('ResourcePrefix'))))]"
+              }
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/firewallPolicies', format('{0}-fw-policy', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-az-firewall-pip', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/firewallPolicies/ruleCollectionGroups', split(format('{0}/forced-app-rule', format('{0}-fw-policy', parameters('ResourcePrefix'))), '/')[0], split(format('{0}/forced-app-rule', format('{0}-fw-policy', parameters('ResourcePrefix'))), '/')[1])]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-hub-vnet', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/firewallPolicies/ruleCollectionGroups', split(format('{0}/redis-collection-groups', format('{0}-fw-policy', parameters('ResourcePrefix'))), '/')[0], split(format('{0}/redis-collection-groups', format('{0}-fw-policy', parameters('ResourcePrefix'))), '/')[1])]"
+      ]
+    },
+    {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[format('Microsoft.Network/azureFirewalls/{0}', format('{0}-fw', parameters('ResourcePrefix')))]",
+      "name": "default",
+      "properties": {
+        "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-oms', parameters('ResourcePrefix')))]",
+        "metrics": [
+          {
+            "category": "AllMetrics",
+            "enabled": true,
+            "retentionPolicy": {
+              "enabled": false,
+              "days": 0
+            }
+          }
+        ],
+        "logs": [
+          {
+            "category": "AzureFirewallApplicationRule",
+            "enabled": true,
+            "retentionPolicy": {
+              "enabled": false,
+              "days": 0
+            }
+          },
+          {
+            "category": "AzureFirewallNetworkRule",
+            "enabled": true,
+            "retentionPolicy": {
+              "enabled": false,
+              "days": 0
+            }
+          },
+          {
+            "category": "AzureFirewallDnsProxy",
+            "enabled": true,
+            "retentionPolicy": {
+              "enabled": false,
+              "days": 0
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/azureFirewalls', format('{0}-fw', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-oms', parameters('ResourcePrefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/routeTables",
+      "apiVersion": "2021-03-01",
+      "name": "[format('{0}-rt', parameters('ResourcePrefix'))]",
+      "location": "[resourceGroup().location]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "disableBgpRoutePropagation": false,
+        "routes": [
+          {
+            "name": "forced-tunnel",
+            "properties": {
+              "addressPrefix": "0.0.0.0/0",
+              "nextHopType": "VirtualAppliance",
+              "hasBgpOverride": false,
+              "nextHopIpAddress": "[reference(resourceId('Microsoft.Network/azureFirewalls', format('{0}-fw', parameters('ResourcePrefix')))).ipConfigurations[0].properties.privateIPAddress]"
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/azureFirewalls', format('{0}-fw', parameters('ResourcePrefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks/subnets",
+      "apiVersion": "2021-03-01",
+      "name": "[format('{0}/redis-subnet', format('{0}-redis-vnet', parameters('ResourcePrefix')))]",
+      "properties": {
+        "addressPrefix": "[parameters('RedisVNetAddressRange')]",
+        "networkSecurityGroup": {
+          "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-redis-nsg', parameters('ResourcePrefix')))]"
+        },
+        "routeTable": {
+          "id": "[resourceId('Microsoft.Network/routeTables', format('{0}-rt', parameters('ResourcePrefix')))]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-redis-nsg', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-redis-vnet', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/routeTables', format('{0}-rt', parameters('ResourcePrefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Cache/redis",
+      "apiVersion": "2020-12-01",
+      "name": "[format('{0}redis', toLower(parameters('ResourcePrefix')))]",
+      "location": "[resourceGroup().location]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "sku": {
+          "capacity": 1,
+          "family": "P",
+          "name": "Premium"
+        },
+        "enableNonSslPort": true,
+        "minimumTlsVersion": "1.2",
+        "publicNetworkAccess": "Enabled",
+        "redisVersion": "4",
+        "subnetId": "[format('{0}/subnets/redis-subnet', resourceId('Microsoft.Network/virtualNetworks', format('{0}-redis-vnet', parameters('ResourcePrefix'))))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/azureFirewalls', format('{0}-fw', parameters('ResourcePrefix')))]",
+        "[extensionResourceId(resourceId('Microsoft.Network/azureFirewalls', format('{0}-fw', parameters('ResourcePrefix'))), 'Microsoft.Insights/diagnosticSettings', 'default')]",
+        "[resourceId('Microsoft.Network/firewallPolicies/ruleCollectionGroups', split(format('{0}/forced-app-rule', format('{0}-fw-policy', parameters('ResourcePrefix'))), '/')[0], split(format('{0}/forced-app-rule', format('{0}-fw-policy', parameters('ResourcePrefix'))), '/')[1])]",
+        "[resourceId('Microsoft.Network/firewallPolicies/ruleCollectionGroups', split(format('{0}/redis-collection-groups', format('{0}-fw-policy', parameters('ResourcePrefix'))), '/')[0], split(format('{0}/redis-collection-groups', format('{0}-fw-policy', parameters('ResourcePrefix'))), '/')[1])]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-redis-vnet', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/routeTables', format('{0}-rt', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks/subnets', split(format('{0}/redis-subnet', format('{0}-redis-vnet', parameters('ResourcePrefix'))), '/')[0], split(format('{0}/redis-subnet', format('{0}-redis-vnet', parameters('ResourcePrefix'))), '/')[1])]"
+      ]
+    },
+    {
+      "type": "Microsoft.Insights/diagnosticSettings",
+      "apiVersion": "2021-05-01-preview",
+      "scope": "[format('Microsoft.Cache/redis/{0}', format('{0}redis', toLower(parameters('ResourcePrefix'))))]",
+      "name": "default",
+      "properties": {
+        "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-oms', parameters('ResourcePrefix')))]",
+        "metrics": [
+          {
+            "category": "AllMetrics",
+            "enabled": true,
+            "retentionPolicy": {
+              "days": 0,
+              "enabled": false
+            }
+          }
+        ],
+        "logs": [
+          {
+            "enabled": true,
+            "category": "ConnectedClientList",
+            "retentionPolicy": {
+              "days": 0,
+              "enabled": false
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-oms', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Cache/redis', format('{0}redis', toLower(parameters('ResourcePrefix'))))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "DataExplorerClusterUrl": {
+      "type": "string",
+      "value": "[format('https://ade.loganalytics.io{0}', resourceId('Microsoft.OperationalInsights/workspaces', format('{0}-oms', parameters('ResourcePrefix'))))]"
+    },
+    "CacheForRedisHostName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Cache/redis', format('{0}redis', toLower(parameters('ResourcePrefix'))))).hostName]"
+    },
+    "CacheForRedisIp": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Cache/redis', format('{0}redis', toLower(parameters('ResourcePrefix'))))).staticIP]"
+    },
+    "AzFirewallPublicIp": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('{0}-az-firewall-pip', parameters('ResourcePrefix')))).ipAddress]"
+    },
+    "AzFirewallPrivateIp": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Network/azureFirewalls', format('{0}-fw', parameters('ResourcePrefix')))).ipConfigurations[0].properties.privateIPAddress]"
+    }
+  }
+}
