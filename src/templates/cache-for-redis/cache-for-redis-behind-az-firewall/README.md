@@ -8,15 +8,11 @@ The following is the final template after this research was completed.
 
 ## Summary
 
----
-
 One of the most frequently wondered things I always wonder and get asked about is "what IPs or hostnames do we need to open for [insert Azure Service here]?". This article provides an approach to finding and documenting this dependency information out if the Azure service in question can join an Azure Virtual Network. The general idea is to deploy the Azure resource behind an Azure Firewall and to ensure the Azure Firewall has at least one (1) application rule in its firewall policy or rules. By adding the single application rule, it will check for SNI and hostnames for most connections. We can proceed to dump the firewall logs in Log Analytics and begin the analysis to investigate which outbound dependencies an Azure service may have. I prefer to divide the research into 2 categories: The minimal required dependencies to successfully deploy the service and the rest of the required dependencies.
 
 I will test this method today against Azure Cache for Redis. The first iteration of the template deployment will place Azure Cache for Redis in a Virtual Network with the most restrictive NSGs possible with its subnet pointing traffic to an Azure Firewall via a default Azure Route Table route. The Azure Firewall will have its logs being sent to Log Analytics and will only include an application rule for 'www.microsoft.com:80'. The deployment is expected to fail as Cache For Redis will not be able to reach out to its dependencies, however this will allow us to identify which dependencies are needed to successfully deploy Azure Cache for Redis by using the Azure Firewall logs that are being sent to Log Analytics.
 
 ## Parameters
-
----
 
 - **ResourcePrefix**: Used as a prefix for resource naming.
 - **MyIP**: Used to open your public IP through Network Security Groups.
@@ -24,8 +20,6 @@ I will test this method today against Azure Cache for Redis. The first iteration
 - **HubVNetAddressRange**:  Used to specify the address range for the hub Virtual Network.
 
 ## Resources Deployed
-
----
 
 Let's start with the first template. We will have the following resource:
 
@@ -43,8 +37,6 @@ Let's start with the first template. We will have the following resource:
 - Two (2) Azure Monitor Diagnostic Settings: One for Azure Firewall and one for Azure Cache for Redis
 
 ## Initial Locked Down Template
-
----
 
 Here is the initial fully locked down template before the correct rules are added to Azure Firewall (azureDeploy.initial.json or azureDeploy.initial.bicep):
 
