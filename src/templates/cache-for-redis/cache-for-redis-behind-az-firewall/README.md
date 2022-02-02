@@ -54,6 +54,8 @@ Here is the initial fully locked down template before the correct rules are adde
 
 The expectation here is that the Cache for Redis will fail as it will not be able to start the service. In the meantime, Azure Firewall will be logging all its deny firewall logs in Log Analytics. Unfortunately, we will definitely not get an exhaustive list right away. We will have to continue to log deny entries and allow them until Cache for Redis successfully deploys. Here is the first attempt:
 
+![Resource Deployment](image-001.png)
+
 Log Analtytics Azure Firewall Rules query to search for deny entries:
 
 ```kql
@@ -95,6 +97,8 @@ let denies = (AzureDiagnostics
 union allowed, denies
 | extend NotUsedSince= datetime_diff('minute', now(), iif(isnull(LastTimeDenied), LastTimeAllowed, LastTimeDenied))
 ```
+
+![Firewall Query Results](image-002.png)
 
 Now that we are observing the list of deny entries, I will begin updating the template to add network or application rules to the Azure Firewall Policy until I allow all enough endpoints for the Cache for Redis service to finish deploying. Ultimately, the observation was that the following endpoints were needed before Azure Cache for Redis deployed successfully. Please note this list may not be exahustive and is subject to change as time goes by.
 
@@ -169,6 +173,8 @@ In the end, the following ended up being my final template. However, based on do
 [![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2fazureDeploy.json)
 
 ## License/Disclaimer
+
+---
 
 Copyright © 2022 Michael Lopez
 
