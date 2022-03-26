@@ -62,7 +62,7 @@ function Send-HttpProbe {
             }
         }
 
-        function Do-Cleanup {
+        function Invoke-SocketCleanup {
             [CmdletBinding()]
             param(
                 [System.Net.Sockets.Socket][Parameter(Mandatory=$false)]$Socket,
@@ -234,7 +234,7 @@ function Send-HttpProbe {
             $ip = $ips[0]
         }
         else {
-            $ip = $ips | Where-Object { $null -ne $_.IPAddress } | Select-Object -First 1 | % { [System.Net.IPAddress]::Parse($_.IPAddress) }
+            $ip = $ips | Where-Object { $null -ne $_.IPAddress } | Select-Object -First 1 | ForEach-Object { [System.Net.IPAddress]::Parse($_.IPAddress) }
         }
         $socket = New-Object System.Net.Sockets.Socket $ip.AddressFamily, ([System.Net.Sockets.SocketType]::Stream), ([System.Net.Sockets.ProtocolType]::Tcp)
         $ipendpoint = New-Object System.Net.IPEndPoint($ip, $Port)
@@ -242,10 +242,10 @@ function Send-HttpProbe {
             $socket.Connect($ipendpoint) | Out-Null
             $test2Result = "Success"
             if($ip.AddressFamily -eq ([System.Net.Sockets.AddressFamily]::InterNetworkV6)) {
-                $test2Output = "Connnected to [$($ip)]:$($Port)"
+                $test2Output = "Connected from [$($socket.LocalEndPoint.Address)]:$($socket.LocalEndPoint.Port) to [$($ip)]:$($Port)"
             }
             else {
-                $test2Output = "Connnected to $($ip):$($Port)"
+                $test2Output = "Connected from $($socket.LocalEndPoint.Address):$($socket.LocalEndPoint.Port) to $($ip):$($Port)"
             }
         }
         catch {
@@ -270,7 +270,7 @@ function Send-HttpProbe {
 
         if($stop) {
             if($null -ne $socket) {
-                Do-Cleanup -Socket $socket -NetworkStream $null -SslStream $null
+                Invoke-SocketCleanup -Socket $socket -NetworkStream $null -SslStream $null
             }
             return
         }
@@ -291,7 +291,7 @@ function Send-HttpProbe {
             if($NoSNI.IsPresent -and $NoSNI) {
                 $remoteCallback ={
                     param(
-                        [object]$sender,
+                        [object]$theSender,
                         [System.Security.Cryptography.X509Certificates.X509Certificate]$certificate,
                         [System.Security.Cryptography.X509Certificates.X509Chain]$chain,
                         [System.Net.Security.SslPolicyErrors]$sslPolicyErrors
@@ -348,7 +348,7 @@ function Send-HttpProbe {
 
         if($stop) {
             if($null -ne $socket) {
-                Do-Cleanup -Socket $socket -NetworkStream $netStream -SslStream $sslStream
+                Invoke-SocketCleanup -Socket $socket -NetworkStream $netStream -SslStream $sslStream
             }
             return
         }
@@ -398,7 +398,7 @@ function Send-HttpProbe {
 
         if($stop) {
             if($null -ne $socket) {
-                Do-Cleanup -Socket $socket -NetworkStream $netStream -SslStream $sslStream
+                Invoke-SocketCleanup -Socket $socket -NetworkStream $netStream -SslStream $sslStream
             }
             return
         }
@@ -460,6 +460,6 @@ function Send-HttpProbe {
         )
 
         
-        Do-Cleanup -Socket $socket -NetworkStream $netStream -SslStream $sslStream
+        Invoke-SocketCleanup -Socket $socket -NetworkStream $netStream -SslStream $sslStream
     }
 }
