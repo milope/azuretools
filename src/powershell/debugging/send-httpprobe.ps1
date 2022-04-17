@@ -970,10 +970,12 @@ function Send-HttpProbe {
                     $test1String.Add(",`"IsAuthoritative`":$($_.IsAuthoritative | ConvertTo-Json)")
                     
                     $ipAnswers = $_.IPAddress;
-                    if($ipAnswers.Count -gt 0) { $test1String.Add(",`"Answers`":[$(($ipAnswers | ForEach-Object { [String]::Concat('"', $_,'"') } ) -join ",")]") }
+                    #if($ipAnswers.Count -gt 0) { $test1String.Add(",`"Answers`":[$(($ipAnswers | ForEach-Object { [String]::Concat('"', $_,'"') } ) -join ",")]") }
+                    if($ipAnswers.Count -gt 0) { $test1String.Add(",`"Answers`":$(($ipAnswers -join ","))`"") }
 
                     if($_.AuthoritativeNameServers.Count -gt 0) {
-                        $test1String.Add(",`"NameServers`":[$(($_.AuthoritativeNameServers.PrimaryNameServer | ForEach-Object { [String]::Concat('"', $_,'"') } ) -join ",")]")
+                        #$test1String.Add(",`"NameServers`":[$(($_.AuthoritativeNameServers.PrimaryNameServer | ForEach-Object { [String]::Concat('"', $_,'"') } ) -join ",")]")
+                        $test1String.Add(",`"NameServers`":`"$(($_.AuthoritativeNameServers.PrimaryNameServer  -join ","))`"")
                     }
                     $test1String.Add("}")
                 }
