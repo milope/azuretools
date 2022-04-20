@@ -950,6 +950,7 @@ function Send-HttpProbe {
                 $test1String.Add("{`"TestType`":`"DNS Resolution`"")
                 if($null -eq $ips -or $ips.Count -eq 0) {
                     $test1String.Add(",`"TestResult`":`"Failed`"")
+                    $stop = $true
                 } 
                 else {
                     $test1String.Add(",`"TestResult`":`"Succeeded`"")
@@ -996,12 +997,12 @@ function Send-HttpProbe {
                 }
                 else {
                     $final.Add(("{`"TestType`":`"DNS Resolution`",`"TestResult`":`"Succeeded`",`"TestOutput`":`"Resolved $Hostname to the following IPs $([String]::Join(", ", ($ips | Where-Object { $null -ne $_.IPAddress } | ForEach-Object { $_.IPAddress })))`"}")) | Out-Null
-                    $true
                 }
             }
         }
 
         if ($stop) {
+            $final | Format-List
             return
         }
 
@@ -1048,6 +1049,7 @@ function Send-HttpProbe {
             if ($null -ne $socket) {
                 Invoke-SocketCleanup -Socket $socket -NetworkStream $null -SslStream $null
             }
+            $final | Format-List
             return
         }
 
@@ -1125,6 +1127,7 @@ function Send-HttpProbe {
             if ($null -ne $socket) {
                 Invoke-SocketCleanup -Socket $socket -NetworkStream $netStream -SslStream $sslStream
             }
+            $final | Format-List
             return
         }
 
@@ -1175,6 +1178,7 @@ function Send-HttpProbe {
             if ($null -ne $socket) {
                 Invoke-SocketCleanup -Socket $socket -NetworkStream $netStream -SslStream $sslStream
             }
+            $final | Format-List
             return
         }
 
