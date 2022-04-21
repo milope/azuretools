@@ -992,12 +992,15 @@ function Send-HttpProbe {
                     $ips = Resolve-DnsName -Name $Hostname -Type A_AAAA -ErrorAction SilentlyContinue
                 }
 
+                
+
                 if ($null -eq $ips) {
-                    $final.Add(("{`"TestType`":`"DNS Resolution`",`"TestResult`":`"Failed`",`"TestOutput`":`"Could not resolve DNS Name $($Hostname)`"}")) | Out-Null
+                    $outObject = "{`"TestType`":`"DNS Resolution`",`"TestResult`":`"Failed`",`"TestOutput`":`"Could not resolve DNS Name $($Hostname)`"}" | ConvertFrom-Json
                 }
                 else {
-                    $final.Add(("{`"TestType`":`"DNS Resolution`",`"TestResult`":`"Succeeded`",`"TestOutput`":`"Resolved $Hostname to the following IPs $([String]::Join(", ", ($ips | Where-Object { $null -ne $_.IPAddress } | ForEach-Object { $_.IPAddress })))`"}")) | Out-Null
+                    $outObject = "{`"TestType`":`"DNS Resolution`",`"TestResult`":`"Succeeded`",`"TestOutput`":`"Resolved $Hostname to the following IPs $([String]::Join(", ", ($ips | Where-Object { $null -ne $_.IPAddress } | ForEach-Object { $_.IPAddress })))`"}" | ConvertFrom-Json
                 }
+                $final.Add($outObject) | Out-Null
             }
         }
 
