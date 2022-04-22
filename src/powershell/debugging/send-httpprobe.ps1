@@ -935,7 +935,8 @@ function Send-HttpProbe {
             $ips = New-Object System.Collections.ArrayList
             $ips.Add($parsedip) | Out-Null
 
-            $final.Add(("{`"TestType`":`"DNS Resolution`",`"TestResult`":`"Skipped`",`"TestOutput`":`"No DNS resolution is needed for IP $($ip).`"}")) | Out-Null
+            $outObject = "{`"TestType`":`"DNS Resolution`",`"TestResult`":`"Skipped`",`"TestOutput`":`"No DNS resolution is needed for IP $($ips[0]).`"}" | ConvertFrom-Json
+            $final.Add($outObject) | Out-Null
 
             if($ips -eq $null -or $ips.Count -eq 0) {
                 $stop = $true
