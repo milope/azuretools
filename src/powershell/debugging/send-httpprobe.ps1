@@ -127,18 +127,119 @@ function Send-HttpProbe {
             [CmdletBinding()]
             param(
                 [Byte[]][Parameter(Mandatory = $true)]$Buffer,
-                [Int32][Parameter(Mandatory = $true)]$BytesRead
+                [Int32][Parameter(Mandatory = $true)]$BytesRead,
+                [Switch]$DoubleLineBreak
             )
             process {
                 $returnValue = -1
-                $min = [Math]::Min($Buffer.Length - 2, $BytesRead)
+                $min = [Math]::Min($Buffer.Length, $BytesRead) - 1
+
                 for ($i = 0; $i -lt $min; $i++) {
                     if ($Buffer[$i] -eq 13 -and $Buffer[$i + 1] -eq 10) {
-                        $returnValue = $i
-                        break
+                        if($DoubleLineBreak.IsPresent -and $DoubleLineBreak) {
+                            if($i -lt ([Math]::Min($Buffer.Length, $BytesRead) - 3)) {
+                                if($Buffer[$i + 2] -eq 13 -and $Buffer[$i + 3] -eq 10) {
+                                    $returnValue = $i
+                                    break
+                                }
+                            }
+                        }
+                        else {
+                            $returnValue = $i
+                            break
+                        }
                     }
                 }
                 return $returnValue
+            }
+        }
+
+        function Add-ToExistingBuffer {
+            [CmdletBinding()]
+            param (
+                [Byte[]][Parameter()]$OldValue,
+                [Byte[]][Parameter()]$NewValue,
+                [Int64][Parameter(Mandatory)]$BytesRead
+            )
+            begin {
+                $oldLength = $(if($null -eq $OldValue -or $OldValue.Length -eq 0) { 0 } else { $OldValue.Length })
+                $newValueLength = $(if($null -eq $NewValue -or $NewValue.Length -eq 0) { 0 } else { $NewValue.Length })
+                $addValue = [Math]::Min($newValueLength, $BytesRead)
+                $totalValue = $oldLength + $addValue
+                $resultValue = [System.Byte[]]::new($totalValue)
+
+                if($oldLength -gt 0) {
+                    [Array]::Copy($OldValue, 0, $resultValue, 0, $OldValue.Length)
+                }
+
+                [Array]::Copy($NewValue, 0, $resultValue, $oldLength, $addValue)
+                $resultValue
+            }
+        }
+
+        function Get-HttpResponse {
+            [CmdletBinding()]
+            param (
+                [object][Parameter(Mandatory)]$NetworkStream
+            )
+            begin {
+                $bufferSize = 1024 * 4;
+                $buffer = [System.Byte[]]::new($bufferSize)
+                $headerBreakIdx = -1
+                [System.Byte[]]$fullHeaderBuffer = $null
+                # Read until HTTP headers are done
+                while($headerBreakIdx -lt 0) {
+                    $read = Get-FromNetworkSteam -NetworkStream $NetworkStream -Buffer $buffer -Offset 0 -Length $bufferSize
+
+                    if($read -eq 0) {
+                        throw [InvalidOperationException]::new("Socket was disconnected.")
+                    }
+                    else {
+                        $fullHeaderBuffer = Add-ToExistingBuffer -OldValue $fullHeaderBuffer -NewValue $buffer -BytesRead $read
+                        $headerBreakIdx = Get-IndexOfLineBreak -Buffer $fullHeaderBuffer -BytesRead $read -DoubleLineBreak
+                    }
+                }
+
+                $headerString = [Text.Encoding]::UTF8.GetString($fullHeaderBuffer, 0, $headerBreakIdx)
+                $headerSplit = $headerString.Split("`r`n", ([StringSplitOptions]::RemoveEmptyEntries -bor [StringSplitOptions]::TrimEntries));
+                $resultValue = [System.Collections.Generic.List[String]]::new()
+                $resultValue.Add("{")
+
+                (0 .. ($headerSplit.Length - 1)) | ForEach-Object {
+
+                    if($_ -eq 0) {
+                        $statusDescriptionSplit = $headerSplit[$_].Split(' ', 3)
+                        if($statusDescriptionSplit.Length -eq 3) {
+                            $resultValue.Add("`"StatusCode`":`"$($statusDescriptionSplit[1])`"")
+                            $resultValue.Add(",`"StatusDescription`":`"$($statusDescriptionSplit[2])`"")
+                        }
+                        else {
+                            throw [InvalidOperationException]::new("Cannot parse HTTP response in the status line.")
+                        }
+                    } else {
+                        if($_ -eq 1) {
+                            $resultValue.Add(",`"Headers`":[")
+                        }
+                        elseif($_ -gt 1) {
+                            $resultValue.Add(",")
+                        }
+                        $headerSplitSplit = $headerSplit[$_].Split(": ", 2, ([StringSplitOptions]::RemoveEmptyEntries -bor [StringSplitOptions]::TrimEntries))
+
+                        if($headerSplitSplit.Length -lt 2) {
+                            throw [InvalidOperationException]::new("Cannot parse HTTP header $($headerSplit[$_]).")
+                        }
+                        # Watch out for repeating header values :)
+                        $resultValue.Add("{`"$($headerSplitSplit[0])`":`"$($headerSplitSplit[1])`"}")
+
+                        if($_ -eq $headerSplit.Length - 1) {
+                            $resultValue.Add("]")
+                        }
+                    }
+                }
+
+                $resultValue.Add("}")
+                $output = ($resultValue -join [String]::Empty) | ConvertFrom-Json
+                $output
             }
         }
 
@@ -919,8 +1020,8 @@ function Send-HttpProbe {
         $test4Output = "Either DNS resolution, TCP connection or SSL handshake tests failed."
 
         $test5Name = "Read Web Response Status"
-        $test5Result = "Not Started"
-        $test5Output = "Either DNS resolution, TCP connection, SSL handshake or Web Request tests failed."
+        #$test5Result = "Not Started"
+        #$test5Output = "Either DNS resolution, TCP connection, SSL handshake or Web Request tests failed."
 
         $stop = $false
         $parsedip = [System.Net.IPAddress]::Any
@@ -992,8 +1093,6 @@ function Send-HttpProbe {
                 else {
                     $ips = Resolve-DnsName -Name $Hostname -Type A_AAAA -ErrorAction SilentlyContinue
                 }
-
-                
 
                 if ($null -eq $ips) {
                     $outObject = "{`"TestType`":`"DNS Resolution`",`"TestResult`":`"Failed`",`"TestOutput`":`"Could not resolve DNS Name $($Hostname)`"}" | ConvertFrom-Json
@@ -1170,13 +1269,12 @@ function Send-HttpProbe {
             }
         }
 
-        $final.Add(([PSCustomObject]@(
-            [PSCustomObject]@{
+        $final.Add([PSCustomObject]@{
                 TestType   = $test4Name
                 TestResult = $test4Result
                 TestOutput = $test4Output
             }
-        ))) | Out-Null
+        ) | Out-Null
 
         if ($stop) {
             if ($null -ne $socket) {
@@ -1186,14 +1284,30 @@ function Send-HttpProbe {
             return
         }
 
-        #TODO: Test 5
-        
-        $bufferSize = 4 * 1024
-        $buffer = New-Object System.Byte[] $bufferSize
-        $read = 0
-        $statusLine = $null
+        try {
+            $response = Get-HttpResponse -NetworkStream $stream
+
+            $final.Add(
+                [PSCustomObject]@{
+                    TestType   = $test5Name
+                    TestResult = "Succeeded"
+                    TestOutput = $response
+                }
+            ) | Out-Null
+        }
+        catch {            
+            $final.Add([PSCustomObject]@{
+                    TestType   = $test5Name
+                    TestResult = "Failed"
+                    TestOutput = $_.Exception.Message
+                }
+            ) | Out-Null
+        }
+
+
 
         # Get status line
+        <#
         while ($true) {
             try {
                 $read = Get-FromNetworkSteam -Buffer $buffer -NetworkStream $stream -Offset 0 -Length $bufferSize
@@ -1240,7 +1354,7 @@ function Send-HttpProbe {
                 TestResult = $test5Result
                 TestOutput = $test5Output
             }
-        ))) | Out-Null
+        ))) | Out-Null #>
 
         $final | Format-List
         
