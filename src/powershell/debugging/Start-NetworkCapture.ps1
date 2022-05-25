@@ -72,7 +72,7 @@ function Start-NetworkCapture {
 
         $traceDirectory = Split-Path $TraceFile
         if(-not (Test-Path $traceDirectory)) {
-            New-Item -Path $traceDirectory -ItemType Directory
+            New-Item -Path $traceDirectory -ItemType Directory | Out-Null
         }
 
         if(-not $PSBoundParameters["OnlyConvertFile"] -or -not $OnlyConvertFile)  {
