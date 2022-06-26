@@ -32,7 +32,7 @@ The mock API is only configured to accept a web request in the following manner:
 
 The first APIM can also accept the request in HTTPS as well. The API Management behind Application Gateway only accepts HTTP as SSL is not in the context of this sample.
 
-# Intent and Routing
+## Intent and Routing
 
 The intent of this template is to show how routing and a hub and spoke network is usually setup in Azure based on my experience. Once deployed, if we connect to the client VM and send a web request to the first API Management's mock API, the following will take place:
 
@@ -55,13 +55,13 @@ The intent of this template is to show how routing and a hub and spoke network i
 14. Response traffic will route back in the same manner it routed incoming: Second APIM to Application Gateway, DNAT to Azure Firewall's public IP, DNAT to first API Management and directed via VNET peering, return back from the first API Management to Azure Firewall due to default route and VNET peering, directed to the client VM.
 15. Both API Management services, the Application Gateway and the Azure Firewall will add their respective entries in the Log Analytics workspace.
 
-# Topology
+## Topology
 
 The following shows the resulting deployment in a network topology.
 
 ![Network Topology](apim-hub-and-spoke-topology.png)
 
-# Parameters
+## Parameters
 
 The parameters for this template as as follows:
 
@@ -72,7 +72,7 @@ The parameters for this template as as follows:
 5. 'apimPublisherEMail': The e-mail address of the publisher for both APIM services.
 6. 'yourIP': This IP will be added to the route tables used in the client virtual machines and first API Management service's spoke virtual network subnets to allow for successul SSH connectivity to the client virtual machine while skipping the Azure Firewall.
 
-# Output
+## Output
 
 The following data will be returned as output upon a successful deployment:
 
@@ -81,14 +81,14 @@ The following data will be returned as output upon a successful deployment:
 3. 'VirtualMachineUsername': Will display the username that will be used for the SSH connection.
 4. 'ApplicationGatewayDNS': Will display the fully-qualified domain name to send request to Application Gateway.
 5. 'AppliucationGatewayIP': Will display the public IP assigned to the Application Gateway'.
-4. 'AzureFirewallDNS': Will display the fully-qualified domain name to send request to Azure Firewall.
-5. 'AzureFirewallIP': Will display the public IP assigned to the Azure Firewall'.
-6. 'ClientAPIManageentGatewayUrl': The URL to use to send requests to the first API Management service.
-7. 'ClientAPIManagementPrivateIpAddress': The private IP address assigned to the first API Management service.
-8. 'DestinationAPIManagementGatewayUrl': The URL to use to send requests to the second API Management service behind the Application Gateway.
-9. 'DestinationAPIManagementPrivateIpAddress': The private IP address assigned to the second API Management service behind the Application Gateway.
+6. 'AzureFirewallDNS': Will display the fully-qualified domain name to send request to Azure Firewall.
+7. 'AzureFirewallIP': Will display the public IP assigned to the Azure Firewall'.
+8. 'ClientAPIManageentGatewayUrl': The URL to use to send requests to the first API Management service.
+9. 'ClientAPIManagementPrivateIpAddress': The private IP address assigned to the first API Management service.
+10. 'DestinationAPIManagementGatewayUrl': The URL to use to send requests to the second API Management service behind the Application Gateway.
+11. 'DestinationAPIManagementPrivateIpAddress': The private IP address assigned to the second API Management service behind the Application Gateway.
 
-# License/Disclaimer
+## License/Disclaimer
 
 Copyright © 2021 Michael Lopez
 
