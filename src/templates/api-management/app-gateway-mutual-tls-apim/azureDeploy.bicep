@@ -35,6 +35,8 @@ param ApplicationGatewaySubnetAddressRange string = '10.0.0.0/24'
 param ApplicationGatewayTrustedClientCerts array
 @description('Specify your IP to be allowed to send HTTP/S requests to Application Gateway.')
 param MyIP string
+@description('Specify a location for the resources.')
+param Location string = resourceGroup().location
 @description('API Management Publisher E-mail.')
 param PublisherEmail string
 @description('API Management Publisher Name.')
@@ -76,7 +78,7 @@ var sslPolicyTrustedCerts = [for i in range(0, trustedClientCertsCount): {
 
 resource ApimNsg 'Microsoft.Network/networkSecurityGroups@2021-03-01' = {
   name: '${ResourcePrefix}-apim-nsg'
-  location: resourceGroup().location
+  location: Location
   tags: tags
   properties: {
     securityRules: [
@@ -142,7 +144,7 @@ resource ApimNsg 'Microsoft.Network/networkSecurityGroups@2021-03-01' = {
 
 resource AppGwNsg 'Microsoft.Network/networkSecurityGroups@2021-03-01' = {
   name: '${ResourcePrefix}-appgw-nsg'
-  location: resourceGroup().location
+  location: Location
   tags: tags
   properties: {
     securityRules: [
@@ -208,7 +210,7 @@ resource AppGwNsg 'Microsoft.Network/networkSecurityGroups@2021-03-01' = {
 
 resource Vnet 'Microsoft.Network/virtualNetworks@2021-03-01' = {
   name: '${ResourcePrefix}-vnet'
-  location: resourceGroup().location
+  location: Location
   tags: tags
   properties: {
     addressSpace: {
@@ -270,7 +272,7 @@ resource Vnet 'Microsoft.Network/virtualNetworks@2021-03-01' = {
 
 resource AppGwPublicIp 'Microsoft.Network/publicIPAddresses@2021-03-01' = {
   name: '${ResourcePrefix}-appgw-pip'
-  location: resourceGroup().location
+  location: Location
   tags: tags
   sku: {
     name: 'Standard'
@@ -288,7 +290,7 @@ resource AppGwPublicIp 'Microsoft.Network/publicIPAddresses@2021-03-01' = {
 
 resource ApimPublicIp 'Microsoft.Network/publicIPAddresses@2021-03-01' = {
   name: '${ResourcePrefix}-apim-pip'
-  location: resourceGroup().location
+  location: Location
   tags: tags
   sku: {
     name: 'Standard'
@@ -324,7 +326,7 @@ resource PrivateDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetwor
 
 resource Apim 'Microsoft.ApiManagement/service@2021-04-01-preview' = {
   name: toLower('${ResourcePrefix}-apim')
-  location: resourceGroup().location
+  location: Location
   tags: tags
   properties: {
     publisherEmail: PublisherEmail
@@ -466,7 +468,7 @@ resource ApiCertApiOperationPolicy 'Microsoft.ApiManagement/service/apis/operati
 
 resource AppGw 'Microsoft.Network/applicationGateways@2021-03-01' = {
   name: '${ResourcePrefix}-appgw'
-  location: resourceGroup().location
+  location: Location
   tags: tags
   properties: {
     sku: {

@@ -112,6 +112,5 @@ resource Batch 'Microsoft.Batch/batchAccounts@2021-06-01' = {
   properties: {
     poolAllocationMode: 'UserSubscription'
     publicNetworkAccess: 'Enabled'
-
   }
 }

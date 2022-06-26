@@ -21,6 +21,9 @@ SOFTWARE.
 @description('Use this parameter to prefix all resources created')
 param ResourcePrefix string
 
+@description('Specify a location for the resources.')
+param Location string = resourceGroup().location
+
 @description('Pass your IP Address to allow through NSG')
 param MyIP string
 
@@ -44,7 +47,7 @@ var monitorEndpointSuffix = '${initSuffix}${latterSuffix}'
 
 resource FlowLogStorage 'Microsoft.Storage/storageAccounts@2021-06-01' = {
   name: 'flowlogs${uniqueString(resourceGroup().id)}'
-  location: resourceGroup().location
+  location: Location
   tags: tags
   sku: {
     name: 'Standard_LRS'
@@ -57,7 +60,7 @@ resource FlowLogStorage 'Microsoft.Storage/storageAccounts@2021-06-01' = {
 
 resource LaWorkspace 'Microsoft.OperationalInsights/workspaces@2021-06-01' = {
   name: '${ResourcePrefix}-oms'
-  location: resourceGroup().location
+  location: Location
   tags: tags
   properties: {
     publicNetworkAccessForIngestion: 'Enabled'
@@ -71,7 +74,7 @@ resource LaWorkspace 'Microsoft.OperationalInsights/workspaces@2021-06-01' = {
 
 resource RedisNsg 'Microsoft.Network/networkSecurityGroups@2021-03-01' = {
   name: '${ResourcePrefix}-redis-nsg'
-  location: resourceGroup().location
+  location: Location
   tags: tags
   properties: {
     securityRules: [
@@ -241,7 +244,7 @@ resource AzureFirewallPublicIp 'Microsoft.Network/publicIPAddresses@2021-03-01' 
     name: 'Standard'
     tier: 'Regional'
   }
-  location: resourceGroup().location
+  location: Location
   properties: {
     dnsSettings: {
       domainNameLabel: '${toLower(ResourcePrefix)}fw'
@@ -255,7 +258,7 @@ resource AzureFirewallPublicIp 'Microsoft.Network/publicIPAddresses@2021-03-01' 
 resource NetworkWatcher 'Microsoft.Network/networkWatchers@2021-03-01' = {
   name: '${ResourcePrefix}-nw'
   tags: tags
-  location: resourceGroup().location
+  location: Location
   properties: {
     
   }
@@ -264,7 +267,7 @@ resource NetworkWatcher 'Microsoft.Network/networkWatchers@2021-03-01' = {
 resource FlowLogsRedis 'Microsoft.Network/networkWatchers/flowLogs@2021-03-01' = {
   name: '${NetworkWatcher.name}/flowlogs-redis'
   tags: tags
-  location: resourceGroup().location
+  location: Location
   properties: {
     targetResourceId: RedisNsg.id
     storageId: FlowLogStorage.id
@@ -284,7 +287,7 @@ resource FlowLogsRedis 'Microsoft.Network/networkWatchers/flowLogs@2021-03-01' =
 resource RedisVnet 'Microsoft.Network/virtualNetworks@2021-03-01' = {
   name: '${ResourcePrefix}-redis-vnet'
   tags: tags
-  location: resourceGroup().location
+  location: Location
   properties: {
     addressSpace: {
       addressPrefixes: [
@@ -307,7 +310,7 @@ resource RedisVnet 'Microsoft.Network/virtualNetworks@2021-03-01' = {
 
 resource HubVnet 'Microsoft.Network/virtualNetworks@2021-03-01' = {
   name: '${ResourcePrefix}-hub-vnet'
-  location: resourceGroup().location
+  location: Location
   tags: tags
   properties: {
     addressSpace: {
@@ -351,7 +354,7 @@ resource HubVnetPeering  'Microsoft.Network/virtualNetworks/virtualNetworkPeerin
 resource AzFirewallPolicy 'Microsoft.Network/firewallPolicies@2021-03-01' = {
   name: '${ResourcePrefix}-fw-policy'
   tags: tags
-  location: resourceGroup().location
+  location: Location
   properties: {
     sku: {
       tier: 'Standard'
@@ -827,7 +830,7 @@ resource RedisRuleCollectionGroup 'Microsoft.Network/firewallPolicies/ruleCollec
 
 resource AzFirewall 'Microsoft.Network/azureFirewalls@2021-03-01' = {
   name: '${ResourcePrefix}-fw'
-  location: resourceGroup().location
+  location: Location
   tags: tags
   dependsOn: [
     ForcedAppCollectionRule
@@ -903,7 +906,7 @@ resource AzFirewallDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01
 
 resource Udr 'Microsoft.Network/routeTables@2021-03-01' = {
   name: '${ResourcePrefix}-rt'
-  location: resourceGroup().location
+  location: Location
   tags: tags
   properties: {
     disableBgpRoutePropagation: false
@@ -936,7 +939,7 @@ resource UdrToSubnet 'Microsoft.Network/virtualNetworks/subnets@2021-03-01' = {
 
 // Ensuring Azure Cache for Redis is deployed as last as possible
 resource Redis 'Microsoft.Cache/redis@2020-12-01' = {
-  location: resourceGroup().location
+  location: Location
   tags: tags
   name: '${toLower(ResourcePrefix)}redis'
   dependsOn: [
