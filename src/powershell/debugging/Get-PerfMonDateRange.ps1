@@ -34,6 +34,6 @@ function Get-PerfMonDateRange {
         $lastTimestamp = $lastTimestamps | Sort-Object -Property Timestamp100NSec -Descending | Select-Object -First 1
         $firstTimestamp = $lastTimestamps | Sort-Object -Property Timestamp100NSec | Select-Object -First 1
 
-        [PSCustomObject]@{Path=[IO.Path]::GetFileName($Path);StartTime = [DateTime]::new($firstTimestamp.Timestamp100NSec).AddYears(1600); EndTime=[DateTime]::new($lastTimestamp.Timestamp100NSec).AddYears(1600)}
+        [PSCustomObject]@{Path=[IO.Path]::GetFileName($Path);StartTime = [System.DateTime]::FromFileTime($firstTimestamp.Timestamp100NSec).ToUniversalTime(); EndTime=[DateTime]::FromFileTime($lastTimestamp.Timestamp100NSec).ToUniversalTime()}
     }
 }
