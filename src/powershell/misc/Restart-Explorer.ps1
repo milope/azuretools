@@ -1,0 +1,1 @@
+(Get-Process | where { $_.name -eq "explorer" }).Kill(); Start-Process explorer
