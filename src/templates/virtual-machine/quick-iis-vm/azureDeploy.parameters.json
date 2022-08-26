@@ -1,0 +1,33 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "AdminUsername": {
+            "value": "GEN-ADMIN-USERNAME"
+        },
+        "AdminPassword": {
+            "value": "GEN-ADMIN-PASSWORD"
+        },
+        "AllowedIP": {
+            "value": "GEN-ALLOWED-IP"
+        },
+        "DNSLabel": {
+            "value": "GEN-DNS-LABEL"
+        },
+        "Location": {
+            "value": "GEN-LOCATION"
+        },
+        "ServerEdition": {
+            "value": "GEN-SERVER-EDITION"
+        },
+        "UseCore": {
+            "value": "GEN-USE-CORE"
+        },
+        "UseGen2": {
+            "value": "GEN-USE-GEN2"
+        },
+        "VMName": {
+            "value": "GEN-VMNAME"
+        }
+    }
+}
