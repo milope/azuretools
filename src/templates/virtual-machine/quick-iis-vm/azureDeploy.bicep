@@ -28,7 +28,7 @@ param AdminPassword string
 @description('Specify your IP or any allowed IP to allow through the network as a Network Security Group will be created.')
 param AllowedIP string
 
-@description('Specify a DNS label to access publicly.')
+@description('Specify a DNS label to access publicly, the template will be adding ipv4 and ipv6 to the label.')
 param DNSLabel string = toLower(VMName)
 
 @description('Specify the resource locations or leave unspecified to use the resource group\'s location.')
@@ -59,7 +59,6 @@ var VNetName = '${VMName}-vnet'
 var PublicIPv4Name = '${VMName}-publicip-v4'
 var PublicIPv6Name = '${VMName}-publicip-v6'
 var NICName = '${VMName}-nic'
-var AvailSetName = '${VMName}-aset'
 var OSSku = ServerEdition == '2008-R2' ? '2008-R2-SP1' : (ServerEdition == '2012' ?  (UseGen2 ? '2012-datacenter-gensecond' : '2012-Datacenter') : (ServerEdition == '2012-R2' ?  (UseGen2 ? '2012-r2-datacenter-gensecond' : '2012-R2-Datacenter') : (ServerEdition == '2016' ?  (UseGen2 ? (UseCore ? '2016-datacenter-server-core-g2' : '2016-datacenter-gensecond') : (UseCore ? '2016-Datacenter-Server-Core' : '2016-Datacenter')) : (ServerEdition == '2019' ?  (UseGen2 ? (UseCore ? '2019-datacenter-core-g2' : '2019-datacenter-gensecond') : (UseCore ? '2019-Datacenter-Core' : '2019-Datacenter')) : (ServerEdition == '2019' ?  (UseGen2 ? (UseCore ? '2022-datacenter-core-g2' : '2022-datacenter-g2') : (UseCore ? '2022-datacenter-core' : '2022-datacenter')) : '2022-datacenter')))))
 
 var Tags = {
@@ -208,16 +207,16 @@ resource PublicIPv4 'Microsoft.Network/publicIPAddresses@2022-01-01' = {
     TraceEventStart
   ]
   sku: {
-    name: 'Basic'
+    name: 'Standard'
     tier: 'Regional'
   }
   properties: {
     dnsSettings: {
-      domainNameLabel: DNSLabel
+      domainNameLabel: '${DNSLabel}ipv4'
     }
     idleTimeoutInMinutes: 4
     publicIPAddressVersion: 'IPv4'
-
+    publicIPAllocationMethod: 'Static'
   }
 }
 
@@ -229,16 +228,16 @@ resource PublicIPv6 'Microsoft.Network/publicIPAddresses@2022-01-01' = {
     TraceEventStart
   ]
   sku: {
-    name: 'Basic'
+    name: 'Standard'
     tier: 'Regional'
   }
   properties: {
     dnsSettings: {
-      domainNameLabel: DNSLabel
+      domainNameLabel: '${DNSLabel}ipv6'
     }
     idleTimeoutInMinutes: 4
-    publicIPAddressVersion: 'IPv4'
-
+    publicIPAddressVersion: 'IPv6'
+    publicIPAllocationMethod: 'Static'
   }
 }
 
@@ -283,15 +282,6 @@ resource NIC 'Microsoft.Network/networkInterfaces@2022-01-01' = {
   }
 }
 
-resource AvailSet 'Microsoft.Compute/availabilitySets@2022-03-01' = {
-  name: AvailSetName
-  location: Location
-  tags: Tags
-  dependsOn: [
-    TraceEventStart
-  ]
-}
-
 resource VM 'Microsoft.Compute/virtualMachines@2022-03-01' = {
   name: VMName
   location: Location
@@ -300,9 +290,6 @@ resource VM 'Microsoft.Compute/virtualMachines@2022-03-01' = {
     TraceEventStart
   ]
   properties: {
-    availabilitySet: {
-      id: AvailSet.id
-    }
     hardwareProfile: {
       vmSize: 'Standard_D2_v2'
     }
@@ -344,7 +331,7 @@ resource VM 'Microsoft.Compute/virtualMachines@2022-03-01' = {
 }
 
 resource InstallIIS 'Microsoft.Compute/virtualMachines/extensions@2022-03-01' = {
-  name: '${VMName}/install-iis'
+  name: '${VM.name}/install-iis'
   location: Location
   tags: Tags
   dependsOn: [
@@ -352,7 +339,6 @@ resource InstallIIS 'Microsoft.Compute/virtualMachines/extensions@2022-03-01' = 
   ]
   properties: {
     autoUpgradeMinorVersion: true
-    enableAutomaticUpgrade: true
     type: 'CustomScriptExtension'
     publisher: 'Microsoft.Compute'
     typeHandlerVersion: '1.10'
@@ -367,3 +353,73 @@ resource InstallIIS 'Microsoft.Compute/virtualMachines/extensions@2022-03-01' = 
     }
   }
 }
+
+resource TraceEventEnd 'Microsoft.Resources/deploymentScripts@2020-10-01' = {
+  name: '${VMName}-trackEventEnd'
+  location: Location
+  tags: Tags
+  dependsOn: [
+    TraceEventStart
+    NSG
+    VNet
+    PublicIPv4
+    PublicIPv6
+    NIC
+    VM
+    InstallIIS
+  ]
+  kind: 'AzurePowerShell'
+  properties: {
+    retentionInterval: 'P1D'
+    azPowerShellVersion:'3.0'
+    arguments: format('-correlationId "{0}"', correlationId)
+    scriptContent: '''
+      param (
+        [Guid]$correlationId
+      )
+      $iKey = (Invoke-RestMethod -UseBasicParsing -Uri https://raw.githubusercontent.com/milope/azuretools/master/api/appinsights/instrumentationKey).InstrumentationKey
+      $EventName = "Template deployment completed."
+      $CustomProperties = @{Type="Template";Category="Virtual Machines";Name="Quick IIS VM";CorrelationId=$correlationId}
+      $AuthUserID = [String]::Empty
+      if(-not [String]::IsNullOrEmpty($env:USERDOMAIN) -and $env:USERDOMAIN.Length -gt 0) {
+        $AuthUserID = "$($env:USERDOMAIN)\$($env:USERNAME)"
+      }
+      else {
+        $AuthUserID = $env:USERNAME
+      }
+      $body = (@{
+          name = "Microsoft.ApplicationInsights.$iKey.Event"
+          time = [DateTime]::UtcNow.ToString("o")
+          iKey = $iKey
+          tags = @{
+              "ai.device.id" = $env:COMPUTERNAME
+              "ai.device.locale" = $env:USERDOMAIN
+              "ai.user.id" = $env:USERNAME
+              "ai.user.authUserId" = $AuthUserID
+              "ai.cloud.roleInstance" = $env:COMPUTERNAME
+          }
+          "data" = @{
+              baseType = "EventData"
+              baseData = @{
+                  ver = "2"
+                  name = $EventName
+                  properties = ($CustomProperties | ConvertTo-Json -Depth 10 | ConvertFrom-Json)
+              }
+          }
+      }) | ConvertTo-Json -Depth 10 -Compress
+      $appInsightsEndpoint = "https://dc.services.visualstudio.com/v2/track"    
+      $temp = $ProgressPreference
+      $ProgressPreference = "SilentlyContinue"
+      try {
+        Invoke-WebRequest -Method POST -Uri $appInsightsEndpoint -Headers @{"Content-Type"="application/x-json-stream"} -Body $body -TimeoutSec 3 | Out-Null
+      }
+      catch {}
+      finally {
+        $ProgressPreference = $temp
+      }
+    '''
+  }
+}
+
+output IPv4 string = PublicIPv4.properties.dnsSettings.fqdn
+output IPv6 string = PublicIPv6.properties.dnsSettings.fqdn

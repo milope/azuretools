@@ -1,0 +1,384 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.4.1008.15138",
+      "templateHash": "6613283763467495892"
+    }
+  },
+  "parameters": {
+    "AdminUsername": {
+      "type": "string",
+      "metadata": {
+        "description": "Specify the administrator username."
+      }
+    },
+    "AdminPassword": {
+      "type": "secureString",
+      "metadata": {
+        "description": "Specify the administrator password"
+      }
+    },
+    "AllowedIP": {
+      "type": "string",
+      "metadata": {
+        "description": "Specify your IP or any allowed IP to allow through the network as a Network Security Group will be created."
+      }
+    },
+    "DNSLabel": {
+      "type": "string",
+      "defaultValue": "[toLower(parameters('VMName'))]",
+      "metadata": {
+        "description": "Specify a DNS label to access publicly, the template will be adding ipv4 and ipv6 to the label."
+      }
+    },
+    "Location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Specify the resource locations or leave unspecified to use the resource group's location."
+      }
+    },
+    "ServerEdition": {
+      "type": "string",
+      "defaultValue": "2022",
+      "allowedValues": [
+        "2008-R2",
+        "2012",
+        "2012-R2",
+        "2016",
+        "2019",
+        "2022"
+      ],
+      "metadata": {
+        "description": "Select the Windows Server edition"
+      }
+    },
+    "UseCore": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Use a Server Core OS (if applicable)."
+      }
+    },
+    "UseGen2": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Use a Gen2 platform (if applicable)."
+      }
+    },
+    "VMName": {
+      "type": "string",
+      "metadata": {
+        "description": "Specify a Virtual Machine Name (Azure Resource Name)."
+      }
+    }
+  },
+  "functions": [],
+  "variables": {
+    "NSGName": "[format('{0}-nsg', parameters('VMName'))]",
+    "VNetName": "[format('{0}-vnet', parameters('VMName'))]",
+    "PublicIPv4Name": "[format('{0}-publicip-v4', parameters('VMName'))]",
+    "PublicIPv6Name": "[format('{0}-publicip-v6', parameters('VMName'))]",
+    "NICName": "[format('{0}-nic', parameters('VMName'))]",
+    "OSSku": "[if(equals(parameters('ServerEdition'), '2008-R2'), '2008-R2-SP1', if(equals(parameters('ServerEdition'), '2012'), if(parameters('UseGen2'), '2012-datacenter-gensecond', '2012-Datacenter'), if(equals(parameters('ServerEdition'), '2012-R2'), if(parameters('UseGen2'), '2012-r2-datacenter-gensecond', '2012-R2-Datacenter'), if(equals(parameters('ServerEdition'), '2016'), if(parameters('UseGen2'), if(parameters('UseCore'), '2016-datacenter-server-core-g2', '2016-datacenter-gensecond'), if(parameters('UseCore'), '2016-Datacenter-Server-Core', '2016-Datacenter')), if(equals(parameters('ServerEdition'), '2019'), if(parameters('UseGen2'), if(parameters('UseCore'), '2019-datacenter-core-g2', '2019-datacenter-gensecond'), if(parameters('UseCore'), '2019-Datacenter-Core', '2019-Datacenter')), if(equals(parameters('ServerEdition'), '2019'), if(parameters('UseGen2'), if(parameters('UseCore'), '2022-datacenter-core-g2', '2022-datacenter-g2'), if(parameters('UseCore'), '2022-datacenter-core', '2022-datacenter')), '2022-datacenter'))))))]",
+    "Tags": {
+      "LabCreatedBy": "Michael Lopez",
+      "LabCreatedOn": "2022-08-25",
+      "LabVersion": "1.0",
+      "LabCategory": "Virtual Machines (Specialized)"
+    },
+    "correlationId": "[guid(uniqueString(deployment().name))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2020-10-01",
+      "name": "[format('{0}-trackEventStart', parameters('VMName'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('Tags')]",
+      "kind": "AzurePowerShell",
+      "properties": {
+        "retentionInterval": "P1D",
+        "azPowerShellVersion": "3.0",
+        "arguments": "[format('-correlationId \"{0}\"', variables('correlationId'))]",
+        "scriptContent": "      param (\r\n        [Guid]$correlationId\r\n      )\r\n      $iKey = (Invoke-RestMethod -UseBasicParsing -Uri https://raw.githubusercontent.com/milope/azuretools/master/api/appinsights/instrumentationKey).InstrumentationKey\r\n      $EventName = \"Template deployment started.\"\r\n      $CustomProperties = @{Type=\"Template\";Category=\"Virtual Machines\";Name=\"Quick IIS VM\";CorrelationId=$correlationId}\r\n      $AuthUserID = [String]::Empty\r\n      if(-not [String]::IsNullOrEmpty($env:USERDOMAIN) -and $env:USERDOMAIN.Length -gt 0) {\r\n        $AuthUserID = \"$($env:USERDOMAIN)\\$($env:USERNAME)\"\r\n      }\r\n      else {\r\n        $AuthUserID = $env:USERNAME\r\n      }\r\n      $body = (@{\r\n          name = \"Microsoft.ApplicationInsights.$iKey.Event\"\r\n          time = [DateTime]::UtcNow.ToString(\"o\")\r\n          iKey = $iKey\r\n          tags = @{\r\n              \"ai.device.id\" = $env:COMPUTERNAME\r\n              \"ai.device.locale\" = $env:USERDOMAIN\r\n              \"ai.user.id\" = $env:USERNAME\r\n              \"ai.user.authUserId\" = $AuthUserID\r\n              \"ai.cloud.roleInstance\" = $env:COMPUTERNAME\r\n          }\r\n          \"data\" = @{\r\n              baseType = \"EventData\"\r\n              baseData = @{\r\n                  ver = \"2\"\r\n                  name = $EventName\r\n                  properties = ($CustomProperties | ConvertTo-Json -Depth 10 | ConvertFrom-Json)\r\n              }\r\n          }\r\n      }) | ConvertTo-Json -Depth 10 -Compress\r\n      $appInsightsEndpoint = \"https://dc.services.visualstudio.com/v2/track\"    \r\n      $temp = $ProgressPreference\r\n      $ProgressPreference = \"SilentlyContinue\"\r\n      try {\r\n        Invoke-WebRequest -Method POST -Uri $appInsightsEndpoint -Headers @{\"Content-Type\"=\"application/x-json-stream\"} -Body $body -TimeoutSec 3 | Out-Null\r\n      }\r\n      catch {}\r\n      finally {\r\n        $ProgressPreference = $temp\r\n      }\r\n    "
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2022-01-01",
+      "name": "[variables('NSGName')]",
+      "tags": "[variables('Tags')]",
+      "location": "[parameters('Location')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "AllowedIP",
+            "properties": {
+              "direction": "Inbound",
+              "access": "Allow",
+              "protocol": "*",
+              "description": "Allow my IP",
+              "destinationAddressPrefix": "VirtualNetwork",
+              "destinationAddressPrefixes": [],
+              "destinationApplicationSecurityGroups": [],
+              "destinationPortRange": "*",
+              "destinationPortRanges": [],
+              "priority": 100,
+              "sourceAddressPrefix": "[parameters('AllowedIP')]",
+              "sourceAddressPrefixes": [],
+              "sourceApplicationSecurityGroups": [],
+              "sourcePortRange": "*",
+              "sourcePortRanges": []
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('VMName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2022-01-01",
+      "name": "[variables('VNetName')]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('Tags')]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.0.0.0/24",
+            "2404:f800:8000:122::/64"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "default",
+            "properties": {
+              "addressPrefixes": [
+                "10.0.0.0/24",
+                "2404:f800:8000:122::/64"
+              ],
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('NSGName'))]"
+              },
+              "serviceEndpoints": [
+                {
+                  "service": "Microsoft.Storage"
+                },
+                {
+                  "service": "Microsoft.KeyVault"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('NSGName'))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('VMName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2022-01-01",
+      "name": "[variables('PublicIPv4Name')]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('Tags')]",
+      "sku": {
+        "name": "Standard",
+        "tier": "Regional"
+      },
+      "properties": {
+        "dnsSettings": {
+          "domainNameLabel": "[format('{0}ipv4', parameters('DNSLabel'))]"
+        },
+        "idleTimeoutInMinutes": 4,
+        "publicIPAddressVersion": "IPv4",
+        "publicIPAllocationMethod": "Static"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('VMName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2022-01-01",
+      "name": "[variables('PublicIPv6Name')]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('Tags')]",
+      "sku": {
+        "name": "Standard",
+        "tier": "Regional"
+      },
+      "properties": {
+        "dnsSettings": {
+          "domainNameLabel": "[format('{0}ipv6', parameters('DNSLabel'))]"
+        },
+        "idleTimeoutInMinutes": 4,
+        "publicIPAddressVersion": "IPv6",
+        "publicIPAllocationMethod": "Static"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('VMName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2022-01-01",
+      "name": "[variables('NICName')]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('Tags')]",
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipv4-configuration",
+            "properties": {
+              "primary": true,
+              "privateIPAddressVersion": "IPv4",
+              "privateIPAllocationMethod": "Dynamic",
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('PublicIPv4Name'))]"
+              },
+              "subnet": {
+                "id": "[format('{0}/subnets/default', resourceId('Microsoft.Network/virtualNetworks', variables('VNetName')))]"
+              }
+            }
+          },
+          {
+            "name": "ipv6-configuration",
+            "properties": {
+              "primary": false,
+              "privateIPAddressVersion": "IPv6",
+              "privateIPAllocationMethod": "Dynamic",
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('PublicIPv6Name'))]"
+              },
+              "subnet": {
+                "id": "[format('{0}/subnets/default', resourceId('Microsoft.Network/virtualNetworks', variables('VNetName')))]"
+              }
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('PublicIPv4Name'))]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('PublicIPv6Name'))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('VMName')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('VNetName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2022-03-01",
+      "name": "[parameters('VMName')]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('Tags')]",
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "Standard_D2_v2"
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('NICName'))]",
+              "properties": {
+                "primary": true
+              }
+            }
+          ]
+        },
+        "osProfile": {
+          "adminPassword": "[parameters('AdminPassword')]",
+          "adminUsername": "[parameters('AdminUsername')]",
+          "computerName": "[toLower(parameters('VMName'))]",
+          "windowsConfiguration": {
+            "enableAutomaticUpdates": true
+          }
+        },
+        "storageProfile": {
+          "osDisk": {
+            "createOption": "FromImage",
+            "caching": "ReadOnly",
+            "managedDisk": {
+              "storageAccountType": "StandardSSD_LRS"
+            }
+          },
+          "imageReference": {
+            "publisher": "MicrosoftWindowsServer",
+            "offer": "WindowsServer",
+            "sku": "[variables('OSSku')]",
+            "version": "latest"
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', variables('NICName'))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('VMName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "apiVersion": "2022-03-01",
+      "name": "[format('{0}/install-iis', parameters('VMName'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('Tags')]",
+      "properties": {
+        "autoUpgradeMinorVersion": true,
+        "type": "CustomScriptExtension",
+        "publisher": "Microsoft.Compute",
+        "typeHandlerVersion": "1.10",
+        "settings": {
+          "timestamp": 1661489263,
+          "fileUris": [
+            "https://raw.githubusercontent.com/milope/azuretools/master/src/templates/virtual-machine/quick-iis-vm/IIS_WebDeploy.ps1"
+          ],
+          "commandToExecute": "powershell -ExecutionPolicy Unrestricted -File IIS_WebDeploy.ps1"
+        },
+        "protectedSettings": {}
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('VMName')))]",
+        "[resourceId('Microsoft.Compute/virtualMachines', parameters('VMName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2020-10-01",
+      "name": "[format('{0}-trackEventEnd', parameters('VMName'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('Tags')]",
+      "kind": "AzurePowerShell",
+      "properties": {
+        "retentionInterval": "P1D",
+        "azPowerShellVersion": "3.0",
+        "arguments": "[format('-correlationId \"{0}\"', variables('correlationId'))]",
+        "scriptContent": "      param (\r\n        [Guid]$correlationId\r\n      )\r\n      $iKey = (Invoke-RestMethod -UseBasicParsing -Uri https://raw.githubusercontent.com/milope/azuretools/master/api/appinsights/instrumentationKey).InstrumentationKey\r\n      $EventName = \"Template deployment completed.\"\r\n      $CustomProperties = @{Type=\"Template\";Category=\"Virtual Machines\";Name=\"Quick IIS VM\";CorrelationId=$correlationId}\r\n      $AuthUserID = [String]::Empty\r\n      if(-not [String]::IsNullOrEmpty($env:USERDOMAIN) -and $env:USERDOMAIN.Length -gt 0) {\r\n        $AuthUserID = \"$($env:USERDOMAIN)\\$($env:USERNAME)\"\r\n      }\r\n      else {\r\n        $AuthUserID = $env:USERNAME\r\n      }\r\n      $body = (@{\r\n          name = \"Microsoft.ApplicationInsights.$iKey.Event\"\r\n          time = [DateTime]::UtcNow.ToString(\"o\")\r\n          iKey = $iKey\r\n          tags = @{\r\n              \"ai.device.id\" = $env:COMPUTERNAME\r\n              \"ai.device.locale\" = $env:USERDOMAIN\r\n              \"ai.user.id\" = $env:USERNAME\r\n              \"ai.user.authUserId\" = $AuthUserID\r\n              \"ai.cloud.roleInstance\" = $env:COMPUTERNAME\r\n          }\r\n          \"data\" = @{\r\n              baseType = \"EventData\"\r\n              baseData = @{\r\n                  ver = \"2\"\r\n                  name = $EventName\r\n                  properties = ($CustomProperties | ConvertTo-Json -Depth 10 | ConvertFrom-Json)\r\n              }\r\n          }\r\n      }) | ConvertTo-Json -Depth 10 -Compress\r\n      $appInsightsEndpoint = \"https://dc.services.visualstudio.com/v2/track\"    \r\n      $temp = $ProgressPreference\r\n      $ProgressPreference = \"SilentlyContinue\"\r\n      try {\r\n        Invoke-WebRequest -Method POST -Uri $appInsightsEndpoint -Headers @{\"Content-Type\"=\"application/x-json-stream\"} -Body $body -TimeoutSec 3 | Out-Null\r\n      }\r\n      catch {}\r\n      finally {\r\n        $ProgressPreference = $temp\r\n      }\r\n    "
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines/extensions', split(format('{0}/install-iis', parameters('VMName')), '/')[0], split(format('{0}/install-iis', parameters('VMName')), '/')[1])]",
+        "[resourceId('Microsoft.Network/networkInterfaces', variables('NICName'))]",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('NSGName'))]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('PublicIPv4Name'))]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('PublicIPv6Name'))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('VMName')))]",
+        "[resourceId('Microsoft.Compute/virtualMachines', parameters('VMName'))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('VNetName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "IPv4": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('PublicIPv4Name'))).dnsSettings.fqdn]"
+    },
+    "IPv6": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('PublicIPv6Name'))).dnsSettings.fqdn]"
+    }
+  }
+}
