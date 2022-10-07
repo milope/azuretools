@@ -112,7 +112,7 @@ function Open-Resource {
         $correlationId = [Guid]::NewGuid()
         $iKey = (Invoke-RestMethod -UseBasicParsing -Uri https://raw.githubusercontent.com/milope/azuretools/master/api/appinsights/instrumentationKey -ErrorAction SilentlyContinue).InstrumentationKey
         if($null -ne $iKey) {
-            Send-TrackEvent -iKey $iKey -EventName "PowerShell Started" -CustomProperties @{Type="PowerShell";Category="Debugging";Name="Open-Resource";ResourceId=$ResourceId;EditMode=($EditMode.IsPresent -and $EditMode);CorrelationId=$correlationId}
+            Send-TrackEvent -iKey $iKey -EventName "PowerShell Started" -CustomProperties @{Type="PowerShell";Category="Azure Resource Manager";Name="Open-Resource";ResourceId=$ResourceId;EditMode=($EditMode.IsPresent -and $EditMode);CorrelationId=$correlationId}
         }
 
         #TODO: Add Validation
@@ -200,7 +200,7 @@ function Open-Resource {
     }
     end {
         if($null -ne $iKey) {
-            Send-TrackEvent -iKey $iKey -EventName "PowerShell Completed" -CustomProperties @{Type="PowerShell";Category="Debugging";Name="Open-Resource";ResourceId=$ResourceId;EditMode=($EditMode.IsPresent -and $EditMode);CorrelationId=$correlationId}
+            Send-TrackEvent -iKey $iKey -EventName "PowerShell Completed" -CustomProperties @{Type="PowerShell";Category="Azure Resource Manager";Name="Open-Resource";ResourceId=$ResourceId;EditMode=($EditMode.IsPresent -and $EditMode);CorrelationId=$correlationId}
         }
     }
 }
