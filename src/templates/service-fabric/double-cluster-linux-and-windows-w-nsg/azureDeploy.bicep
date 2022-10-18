@@ -945,7 +945,7 @@ resource TraceEventEnd 'Microsoft.Resources/deploymentScripts@2020-10-01' = {
       )
       $iKey = (Invoke-RestMethod -UseBasicParsing -Uri https://raw.githubusercontent.com/milope/azuretools/master/api/appinsights/instrumentationKey).InstrumentationKey
       $EventName = "Template deployment completed."
-      $CustomProperties = @{Type="Template";Category="Azure Networking";Name="Peering Overwrite Experiment";CorrelationId=$correlationId}
+      $CustomProperties = @{Type="Template";Category="Service Fabric";Name="Windows and Linux Double Cluster";CorrelationId=$correlationId}
       $AuthUserID = [String]::Empty
       if(-not [String]::IsNullOrEmpty($env:USERDOMAIN) -and $env:USERDOMAIN.Length -gt 0) {
         $AuthUserID = "$($env:USERDOMAIN)\$($env:USERNAME)"

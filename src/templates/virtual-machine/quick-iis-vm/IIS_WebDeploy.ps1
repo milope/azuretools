@@ -105,19 +105,18 @@ $tempARRFile = $temppath + $arrFile
 #     Add-Content -Path $logpath "Done."
 # }
 
+$ProgressPreference = "SilentlyContinue"
 if((Test-Path $tempRewriteFile) -eq $false)
 {
     Add-Content -Path $logpath "`r`nDownloading URL Rewrite... "
-    $wc = New-Object System.Net.WebClient
-    $wc.DownloadFile($urlRewriteURI, $tempRewriteFile)
+    Invoke-WebRequest -Uri $urlRewriteURI -OutFile $tempRewriteFile -UseBasicParsing
     Add-Content -Path $logpath "Done."
 }
 
 if((Test-Path $tempARRFile) -eq $false)
 {
     Add-Content -Path $logpath "`r`nDownloading Application Request Router... "
-    $wc = New-Object System.Net.WebClient
-    $wc.DownloadFile($ARRURI, $tempARRFile)
+    Invoke-WebRequest -Uri $ARRURI -OutFile $tempARRFile -UseBasicParsing
     Add-Content -Path $logpath "Done."
 }
 
@@ -157,7 +156,7 @@ Add-Content -Path $logpath " Done."
 
 # Open Web Deploy to Domain and Private
 Add-Content -Path $logpath "`r`nAdding Firewall rule for Web Deploy..."
-New-NetFirewallRule -DisplayName "WebDeploy" -Profile @("Domain", "Private") -Direction Inbound -Action Allow -Protocol TCP -LocalPort @("8172")
+New-NetFirewallRule -DisplayName "WebDeploy" -Profile @("Public", "Domain", "Private") -Direction Inbound -Action Allow -Protocol TCP -LocalPort @("8172")
 Add-Content -Path $logpath "` Done."
 
 
