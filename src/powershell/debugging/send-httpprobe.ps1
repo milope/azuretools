@@ -31,7 +31,8 @@ function Send-HttpProbe {
         [String][Parameter(Mandatory = $true)]$Hostname,
         [String][Parameter(Mandatory = $false)]$HttpHost,
         [String][Parameter(Mandatory = $false)]$Path = "/",
-        [Switch]$UseExperimentalDnsClient
+        [Switch]$UseExperimentalDnsClient,
+        [Switch]$ThrowOnException
     )
     begin {
         if (-not $PSBoundParameters.ContainsKey("Port")) {
@@ -1357,8 +1358,13 @@ function Send-HttpProbe {
             }
         ))) | Out-Null #>
 
-        $final | Format-List
-        
         Invoke-SocketCleanup -Socket $socket -NetworkStream $netStream -SslStream $sslStream
+        $final
+
+        if($PSBoundParameters["ThrowOnException"] -and $ThrowOnException) {
+            if(($final | Where-Object { $_.TestResult -ne "Successful" }).Count -gt 0) {
+                throw [System.Exception]::new("Stop on exception is enabled. Throwing exception due to failed test.")
+            }
+        }
     }
 }
