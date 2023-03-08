@@ -42,8 +42,9 @@ function Send-HttpProbe {
                 $Port = 80
             }
         }
-
-        $sslwarnfile = (Join-Path -Path $env:TEMP -ChildPath "ssltestcertwarn.log")
+        
+        $temp = [System.IO.Path]::GetTempPath()
+        $sslwarnfile = (Join-Path -Path $temp -ChildPath "ssltestcertwarn.log")
         if (-not $PSBoundParameters.ContainsKey("HttpHost")) {
             $HttpHost = $Hostname
         }
