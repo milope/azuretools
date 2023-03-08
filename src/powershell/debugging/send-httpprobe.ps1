@@ -1199,7 +1199,7 @@ function Send-HttpProbe {
                 }
                 else {
                     $test3Result = "Succeeded"
-                    $test3Output = "SSL Handshake was Succeededful. Cert info: Thumbprint => $($cert.Thumbprint); Subject $($cert.Subject)."
+                    $test3Output = "SSL Handshake was successful. Cert info: Thumbprint => $($cert.Thumbprint); Subject $($cert.Subject)."
                 }
             }
             catch {
@@ -1256,7 +1256,7 @@ function Send-HttpProbe {
 
             Send-ToNetworkStream -NetworkStream $stream -Buffer ([Text.Encoding]::UTF8.GetBytes($webRequest)) | Out-Null
             $test4Result = "Succeeded"
-            $test4Output = "Probe web request sent Succeededfully."
+            $test4Output = "Probe web request sent successfully."
         }
         catch {
             $stop = $true
