@@ -1362,7 +1362,7 @@ function Send-HttpProbe {
         $final
 
         if($PSBoundParameters["ThrowOnException"] -and $ThrowOnException) {
-            if(($final | Where-Object { $_.TestResult -ne "Successful" }).Count -gt 0) {
+            if(($final | Where-Object { $_.TestResult -ne "Succeeded" }).Count -gt 0) {
                 throw [System.Exception]::new("Stop on exception is enabled. Throwing exception due to failed test.")
             }
         }
