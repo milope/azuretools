@@ -1,0 +1,77 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.4.1008.15138",
+      "templateHash": "7546953802168561005"
+    }
+  },
+  "parameters": {
+    "StorageAccountName": {
+      "type": "string",
+      "metadata": {
+        "description": "Specify the name for the Storage Account (must be globally unique)."
+      }
+    },
+    "Location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Specify a location for the Storage Account. If unspecified, will use the resource group's location"
+      }
+    }
+  },
+  "functions": [],
+  "variables": {
+    "tags": {
+      "LabCreatedBy": "Michael Lopez",
+      "LabCreatedOn": "2023-05-04",
+      "LabVersion": "1.0",
+      "LabCategory": "Storage"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2022-09-01",
+      "name": "[parameters('StorageAccountName')]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "kind": "StorageV2",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "properties": {
+        "accessTier": "Hot",
+        "allowBlobPublicAccess": false,
+        "allowSharedKeyAccess": true,
+        "supportsHttpsTrafficOnly": true,
+        "minimumTlsVersion": "TLS1_2"
+      }
+    }
+  ],
+  "outputs": {
+    "SubscriptionId": {
+      "type": "string",
+      "value": "[subscription().id]"
+    },
+    "ResourceGroupName": {
+      "type": "string",
+      "value": "[resourceGroup().name]"
+    },
+    "StorageAccount": {
+      "type": "string",
+      "value": "[parameters('StorageAccountName')]"
+    },
+    "WebEndpoint": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', parameters('StorageAccountName'))).primaryEndpoints.web]"
+    },
+    "AASALink": {
+      "type": "string",
+      "value": "[format('{0}.well-known/apple-app-site-association', reference(resourceId('Microsoft.Storage/storageAccounts', parameters('StorageAccountName'))).primaryEndpoints.web)]"
+    }
+  }
+}
