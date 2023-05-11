@@ -1,0 +1,197 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.4.1008.15138",
+      "templateHash": "6319053988321326413"
+    }
+  },
+  "parameters": {
+    "StorageAccountName": {
+      "type": "string",
+      "metadata": {
+        "description": "Specify the name for the Storage Account (must be globally unique)."
+      }
+    },
+    "Location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Specify a location for the Storage Account. If unspecified, will use the resource group's location"
+      }
+    },
+    "AASAContent": {
+      "type": "string",
+      "metadata": {
+        "description": "Specify the Apple Site Association file content."
+      }
+    }
+  },
+  "functions": [],
+  "variables": {
+    "tags": {
+      "LabCreatedBy": "Michael Lopez",
+      "LabCreatedOn": "2023-05-04",
+      "LabVersion": "1.0",
+      "LabCategory": "Storage"
+    },
+    "correlationId": "[guid(uniqueString(deployment().name))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2020-10-01",
+      "name": "[format('{0}-trackEventStart', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "kind": "AzurePowerShell",
+      "properties": {
+        "retentionInterval": "P1D",
+        "azPowerShellVersion": "3.0",
+        "arguments": "[format('-correlationId \"{0}\"', variables('correlationId'))]",
+        "scriptContent": "      param (\r\n        [Guid]$correlationId\r\n      )\r\n      $iKey = (Invoke-RestMethod -UseBasicParsing -Uri https://raw.githubusercontent.com/milope/azuretools/master/api/appinsights/instrumentationKey).InstrumentationKey\r\n      $EventName = \"Template deployment started.\"\r\n      $CustomProperties = @{Type=\"Template\";Category=\"Azure Storage\";Name=\"Azure Storage with AASA\";CorrelationId=$correlationId}\r\n      $AuthUserID = [String]::Empty\r\n      if(-not [String]::IsNullOrEmpty($env:USERDOMAIN) -and $env:USERDOMAIN.Length -gt 0) {\r\n        $AuthUserID = \"$($env:USERDOMAIN)\\$($env:USERNAME)\"\r\n      }\r\n      else {\r\n        $AuthUserID = $env:USERNAME\r\n      }\r\n      $body = (@{\r\n          name = \"Microsoft.ApplicationInsights.$iKey.Event\"\r\n          time = [DateTime]::UtcNow.ToString(\"o\")\r\n          iKey = $iKey\r\n          tags = @{\r\n              \"ai.device.id\" = $env:COMPUTERNAME\r\n              \"ai.device.locale\" = $env:USERDOMAIN\r\n              \"ai.user.id\" = $env:USERNAME\r\n              \"ai.user.authUserId\" = $AuthUserID\r\n              \"ai.cloud.roleInstance\" = $env:COMPUTERNAME\r\n          }\r\n          \"data\" = @{\r\n              baseType = \"EventData\"\r\n              baseData = @{\r\n                  ver = \"2\"\r\n                  name = $EventName\r\n                  properties = ($CustomProperties | ConvertTo-Json -Depth 10 | ConvertFrom-Json)\r\n              }\r\n          }\r\n      }) | ConvertTo-Json -Depth 10 -Compress\r\n      $appInsightsEndpoint = \"https://dc.services.visualstudio.com/v2/track\"    \r\n      $temp = $ProgressPreference\r\n      $ProgressPreference = \"SilentlyContinue\"\r\n      try {\r\n        Invoke-WebRequest -Method POST -Uri $appInsightsEndpoint -Headers @{\"Content-Type\"=\"application/x-json-stream\"} -Body $body -TimeoutSec 3 | Out-Null\r\n      }\r\n      catch {}\r\n      finally {\r\n        $ProgressPreference = $temp\r\n      }\r\n    "
+      }
+    },
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[format('{0}-uami', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2022-09-01",
+      "name": "[parameters('StorageAccountName')]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "kind": "StorageV2",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "properties": {
+        "accessTier": "Hot",
+        "allowBlobPublicAccess": false,
+        "allowSharedKeyAccess": true,
+        "supportsHttpsTrafficOnly": true,
+        "minimumTlsVersion": "TLS1_2"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "scope": "[format('Microsoft.Storage/storageAccounts/{0}', parameters('StorageAccountName'))]",
+      "name": "360d5770-27d3-4b96-bef9-7b040628b734",
+      "properties": {
+        "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-uami', parameters('StorageAccountName')))).principalId]",
+        "principalType": "ServicePrincipal",
+        "roleDefinitionId": "/providers/Microsoft.Authorization/roleDefinitions/17d1049b-9a84-46fb-8f53-869881c3d3ab",
+        "description": "Adding the managed identity access to be able to run listKeys and create the AASA. This can be removed later."
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', parameters('StorageAccountName'))]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-uami', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2020-10-01",
+      "name": "[format('{0}enableStaticWebsite', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "kind": "AzurePowerShell",
+      "tags": "[variables('tags')]",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-uami', parameters('StorageAccountName'))))]": {}
+        }
+      },
+      "properties": {
+        "retentionInterval": "P1D",
+        "azPowerShellVersion": "3.0",
+        "arguments": "[format('-SubscriptionId \"{0}\" -ResourceGroupName \"{1}\" -StorageAccountName \"{2}\"', subscription().subscriptionId, resourceGroup().name, parameters('StorageAccountName'))]",
+        "scriptContent": "      param (\r\n        [Parameter(Mandatory=$true)][String]$SubscriptionId,\r\n        [Parameter(Mandatory=$true)][String]$ResourceGroupName,\r\n        [Parameter(Mandatory=$true)][String]$StorageAccountName\r\n      )\r\n      \r\n      Start-Sleep -Seconds 60\r\n      $DebugPreference = \"Continue\"\r\n      Connect-AzAccount -Identity\r\n      $context = Get-AzContext\r\n      if($null -eq $context -or $null -eq $context.Account) {\r\n        throw [System.Exception]::new(\"I failed to login to Azure using the Managed Identity.\")\r\n      }\r\n      Select-AzSubscription -Subscription $SubscriptionId\r\n      $storageAccount = Get-AzStorageAccount -ResourceGroupName $ResourceGroupName -AccountName $StorageAccountName -ErrorAction SilentlyContinue\r\n      if($null -eq $storageAccount) {\r\n        throw [System.Exception]::new(\"I failed to get the storage account $StorageAccountName.\")\r\n      }\r\n      $ctx = $storageAccount.Context\r\n      Enable-AzStorageStaticWebsite -Context $ctx\r\n\r\n    "
+      },
+      "dependsOn": [
+        "[extensionResourceId(resourceId('Microsoft.Storage/storageAccounts', parameters('StorageAccountName')), 'Microsoft.Authorization/roleAssignments', '360d5770-27d3-4b96-bef9-7b040628b734')]",
+        "[resourceId('Microsoft.Storage/storageAccounts', parameters('StorageAccountName'))]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-uami', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2020-10-01",
+      "name": "[format('{0}addAASA', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "kind": "AzurePowerShell",
+      "tags": "[variables('tags')]",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-uami', parameters('StorageAccountName'))))]": {}
+        }
+      },
+      "properties": {
+        "retentionInterval": "P1D",
+        "azPowerShellVersion": "3.0",
+        "arguments": "[format('-SubscriptionId \"{0}\" -ResourceGroupName \"{1}\" -StorageAccountName \"{2}\" -AASAContent \"{3}\"', subscription().subscriptionId, resourceGroup().name, parameters('StorageAccountName'), base64(parameters('AASAContent')))]",
+        "scriptContent": "    param (\r\n      [Parameter(Mandatory=$true)][String]$SubscriptionId,\r\n      [Parameter(Mandatory=$true)][String]$ResourceGroupName,\r\n      [Parameter(Mandatory=$true)][String]$StorageAccountName,\r\n      [Parameter(Mandatory=$true)][String]$AASAContent\r\n    )\r\n    \r\n    Start-Sleep -Seconds 60\r\n    $DebugPreference = \"Continue\"\r\n    $actualAASAContent = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($AASAContent))\r\n    Connect-AzAccount -Identity\r\n    $context = Get-AzContext\r\n    if($null -eq $context -or $null -eq $context.Account) {\r\n      throw [System.Exception]::new(\"I failed to login to Azure using the Managed Identity.\")\r\n    }\r\n    Select-AzSubscription -Subscription $SubscriptionId\r\n    $storageAccount = Get-AzStorageAccount -Name $StorageAccountName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue\r\n    while($null -eq $storageAccount) {\r\n        Start-Sleep -Seconds 3\r\n        $storageAccount = Get-AzStorageAccount -Name $StorageAccountName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue\r\n    }\r\n    \r\n    $storageContext = $storageAccount.Context\r\n    $webContainer = Get-AzStorageContainer -Name \"`$web\" -Context $storageContext -ErrorAction SilentlyContinue\r\n    while($null -eq $webContainer) {\r\n        Start-Sleep -Seconds 3\r\n        $webContainer = Get-AzStorageContainer -Name \"`$web\" -Context $storageContext -ErrorAction SilentlyContinue\r\n    }\r\n    \r\n    $contentFile = \".\\temp.json\"\r\n    Write-Debug \"Writing '$actualAASAContent' to $contentFile\"\r\n    $actualAASAContent | Out-File $contentFile\r\n    if(Test-Path -Path $contentFile) {\r\n        try {\r\n            Write-Debug \"Writing the AASA blob.\"\r\n            Set-AzStorageBlobContent -Context $storageContext -Container $webContainer.Name -File $contentFile -Blob \".well-known/apple-app-site-association\" -Properties @{\"ContentType\"=\"application/json\"} -Force | Out-Null\r\n            Write-Debug \"Done!!\"\r\n        }\r\n        finally {\r\n            Remove-Item $contentFile -Force\r\n        }\r\n    }\r\n    "
+      },
+      "dependsOn": [
+        "[extensionResourceId(resourceId('Microsoft.Storage/storageAccounts', parameters('StorageAccountName')), 'Microsoft.Authorization/roleAssignments', '360d5770-27d3-4b96-bef9-7b040628b734')]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}enableStaticWebsite', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}-uami', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2020-10-01",
+      "name": "[format('{0}-trackEventEnd', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "kind": "AzurePowerShell",
+      "properties": {
+        "retentionInterval": "P1D",
+        "azPowerShellVersion": "3.0",
+        "arguments": "[format('-correlationId \"{0}\"', variables('correlationId'))]",
+        "scriptContent": "      param (\r\n        [Guid]$correlationId\r\n      )\r\n      $iKey = (Invoke-RestMethod -UseBasicParsing -Uri https://raw.githubusercontent.com/milope/azuretools/master/api/appinsights/instrumentationKey).InstrumentationKey\r\n      $EventName = \"Template deployment completed.\"\r\n      $CustomProperties = @{Type=\"Template\";Category=\"Azure Storage\";Name=\"Azure Storage with AASA\";CorrelationId=$correlationId}\r\n      $AuthUserID = [String]::Empty\r\n      if(-not [String]::IsNullOrEmpty($env:USERDOMAIN) -and $env:USERDOMAIN.Length -gt 0) {\r\n        $AuthUserID = \"$($env:USERDOMAIN)\\$($env:USERNAME)\"\r\n      }\r\n      else {\r\n        $AuthUserID = $env:USERNAME\r\n      }\r\n      $body = (@{\r\n          name = \"Microsoft.ApplicationInsights.$iKey.Event\"\r\n          time = [DateTime]::UtcNow.ToString(\"o\")\r\n          iKey = $iKey\r\n          tags = @{\r\n              \"ai.device.id\" = $env:COMPUTERNAME\r\n              \"ai.device.locale\" = $env:USERDOMAIN\r\n              \"ai.user.id\" = $env:USERNAME\r\n              \"ai.user.authUserId\" = $AuthUserID\r\n              \"ai.cloud.roleInstance\" = $env:COMPUTERNAME\r\n          }\r\n          \"data\" = @{\r\n              baseType = \"EventData\"\r\n              baseData = @{\r\n                  ver = \"2\"\r\n                  name = $EventName\r\n                  properties = ($CustomProperties | ConvertTo-Json -Depth 10 | ConvertFrom-Json)\r\n              }\r\n          }\r\n      }) | ConvertTo-Json -Depth 10 -Compress\r\n      $appInsightsEndpoint = \"https://dc.services.visualstudio.com/v2/track\"    \r\n      $temp = $ProgressPreference\r\n      $ProgressPreference = \"SilentlyContinue\"\r\n      try {\r\n        Invoke-WebRequest -Method POST -Uri $appInsightsEndpoint -Headers @{\"Content-Type\"=\"application/x-json-stream\"} -Body $body -TimeoutSec 3 | Out-Null\r\n      }\r\n      catch {}\r\n      finally {\r\n        $ProgressPreference = $temp\r\n      }\r\n    "
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}addAASA', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}enableStaticWebsite', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', parameters('StorageAccountName'))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "SubscriptionId": {
+      "type": "string",
+      "value": "[subscription().id]"
+    },
+    "ResourceGroupName": {
+      "type": "string",
+      "value": "[resourceGroup().name]"
+    },
+    "StorageAccount": {
+      "type": "string",
+      "value": "[parameters('StorageAccountName')]"
+    },
+    "WebEndpoint": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Storage/storageAccounts', parameters('StorageAccountName'))).primaryEndpoints.web]"
+    },
+    "AASALink": {
+      "type": "string",
+      "value": "[format('{0}.well-known/apple-app-site-association', reference(resourceId('Microsoft.Storage/storageAccounts', parameters('StorageAccountName'))).primaryEndpoints.web)]"
+    }
+  }
+}
