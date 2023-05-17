@@ -1,0 +1,135 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.4.1008.15138",
+      "templateHash": "13206248348431834123"
+    }
+  },
+  "parameters": {
+    "StorageAccountName": {
+      "type": "string",
+      "metadata": {
+        "description": "Specify the name for the Storage Account we're trying to recover items for."
+      }
+    },
+    "Location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Specify a location. Ideally, this should be the same location as the Storage Account to avoid ingress/egress data."
+      }
+    },
+    "Path": {
+      "type": "string",
+      "metadata": {
+        "description": "Specify the path to attempt recovery for in the {filesystem}/{directory}/{file} format"
+      }
+    },
+    "WhatIf": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Set to true if we want to try a dry run."
+      }
+    }
+  },
+  "functions": [],
+  "variables": {
+    "tags": {
+      "LabCreatedBy": "Michael Lopez",
+      "LabCreatedOn": "2023-05-12",
+      "LabVersion": "1.0",
+      "LabCategory": "Storage"
+    },
+    "correlationId": "[guid(uniqueString(deployment().name))]",
+    "gustring": "[uniqueString(resourceGroup().id, parameters('StorageAccountName'))]",
+    "whatIfFlag": "[if(parameters('WhatIf'), ' -WhatIf', '')]",
+    "raID": "76d2e0d5-3f6a-4d14-b6f8-5e5ac01c4644"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2020-10-01",
+      "name": "[format('{0}{1}ts', parameters('StorageAccountName'), variables('gustring'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "kind": "AzurePowerShell",
+      "properties": {
+        "retentionInterval": "P1D",
+        "azPowerShellVersion": "3.0",
+        "arguments": "[format('-correlationId \"{0}\"', variables('correlationId'))]",
+        "scriptContent": "      param (\r\n        [Guid]$correlationId\r\n      )\r\n      $iKey = (Invoke-RestMethod -UseBasicParsing -Uri https://raw.githubusercontent.com/milope/azuretools/master/api/appinsights/instrumentationKey).InstrumentationKey\r\n      $EventName = \"Template deployment started.\"\r\n      $CustomProperties = @{Type=\"Template\";Category=\"Azure Storage\";Name=\"Recover ADLS Gen 2 Items\";CorrelationId=$correlationId}\r\n      $AuthUserID = [String]::Empty\r\n      if(-not [String]::IsNullOrEmpty($env:USERDOMAIN) -and $env:USERDOMAIN.Length -gt 0) {\r\n        $AuthUserID = \"$($env:USERDOMAIN)\\$($env:USERNAME)\"\r\n      }\r\n      else {\r\n        $AuthUserID = $env:USERNAME\r\n      }\r\n      $body = (@{\r\n          name = \"Microsoft.ApplicationInsights.$iKey.Event\"\r\n          time = [DateTime]::UtcNow.ToString(\"o\")\r\n          iKey = $iKey\r\n          tags = @{\r\n              \"ai.device.id\" = $env:COMPUTERNAME\r\n              \"ai.device.locale\" = $env:USERDOMAIN\r\n              \"ai.user.id\" = $env:USERNAME\r\n              \"ai.user.authUserId\" = $AuthUserID\r\n              \"ai.cloud.roleInstance\" = $env:COMPUTERNAME\r\n          }\r\n          \"data\" = @{\r\n              baseType = \"EventData\"\r\n              baseData = @{\r\n                  ver = \"2\"\r\n                  name = $EventName\r\n                  properties = ($CustomProperties | ConvertTo-Json -Depth 10 | ConvertFrom-Json)\r\n              }\r\n          }\r\n      }) | ConvertTo-Json -Depth 10 -Compress\r\n      $appInsightsEndpoint = \"https://dc.services.visualstudio.com/v2/track\"    \r\n      $temp = $ProgressPreference\r\n      $ProgressPreference = \"SilentlyContinue\"\r\n      try {\r\n        Invoke-WebRequest -Method POST -Uri $appInsightsEndpoint -Headers @{\"Content-Type\"=\"application/x-json-stream\"} -Body $body -TimeoutSec 3 | Out-Null\r\n      }\r\n      catch {}\r\n      finally {\r\n        $ProgressPreference = $temp\r\n      }\r\n    "
+      }
+    },
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[format('{0}{1}uami', parameters('StorageAccountName'), variables('gustring'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}{1}ts', parameters('StorageAccountName'), variables('gustring')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[variables('raID')]",
+      "properties": {
+        "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}{1}uami', parameters('StorageAccountName'), variables('gustring')))).principalId]",
+        "principalType": "ServicePrincipal",
+        "roleDefinitionId": "/providers/Microsoft.Authorization/roleDefinitions/17d1049b-9a84-46fb-8f53-869881c3d3ab",
+        "description": "Adding the managed identity access to be able to run listKeys and create the AASA. This can be removed later."
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}{1}uami', parameters('StorageAccountName'), variables('gustring')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2020-10-01",
+      "name": "[format('{0}{1}rec', parameters('StorageAccountName'), variables('gustring'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "kind": "AzurePowerShell",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}{1}uami', parameters('StorageAccountName'), variables('gustring'))))]": {}
+        }
+      },
+      "properties": {
+        "retentionInterval": "P1D",
+        "azPowerShellVersion": "9.7",
+        "arguments": "[format('-SubscriptionId \"{0}\" -ResourceGroupName \"{1}\" -StorageAccountName \"{2}\" -Path \"{3}\"{4}', subscription().subscriptionId, resourceGroup().name, parameters('StorageAccountName'), parameters('Path'), variables('whatIfFlag'))]",
+        "scriptContent": "    param (\r\n        [Parameter(Mandatory=$false)][String]$SubscriptionId,\r\n        [Parameter(Mandatory=$true)][String]$ResourceGroupName,\r\n        [Parameter(Mandatory=$true)][String]$StorageAccountName,\r\n        [Parameter(Mandatory=$true)][String]$Path,\r\n        [Switch]$WhatIf\r\n    )\r\n    \r\n    function Write-ErrorRecord {\r\n        [CmdletBinding()]\r\n        param (\r\n            [Parameter(Mandatory=$false)][System.Type]$Type = [System.Management.Automation.PSInvalidOperationException],\r\n            [Parameter(Mandatory=$false)][System.Management.Automation.ErrorCategory]$Category = ([System.Management.Automation.ErrorCategory]::InvalidOperation),\r\n            [Parameter(Mandatory=$true)][String]$Message,\r\n            [Switch]$StopScript\r\n        )\r\n        begin {\r\n            $errorRecord = ([System.Management.Automation.ErrorRecord]::new(\r\n                (New-Object -Type $Type.FullName -ArgumentList $Message),\r\n                [String]::Empty,\r\n                $Category,\r\n                $null\r\n            ))\r\n            if($StopScript) {\r\n                Write-ErrorRecord $errorRecord -ErrorAction Stop \r\n            }\r\n            else {\r\n                Write-ErrorRecord $errorRecord\r\n            }\r\n        }\r\n    \r\n        process {\r\n    \r\n        }\r\n        end {\r\n    \r\n        }\r\n    }\r\n    \r\n    $tempDebugPreference = $DebugPreference\r\n    if($PSBoundParameters.ContainsKey(\"Debug\")) {\r\n        $DebugPreference = \"Continue\"\r\n    }\r\n    \r\n    try\r\n    {\r\n    \r\n        Write-Debug \"Getting Azure PowerShell Context.\"\r\n        $azContext = Get-AzContext\r\n        if($null -eq $azContext -and $null -eq $azContext.Account) {\r\n            Write-Debug \"Az Context was not found, will try to login to Azure PowerShell.\"\r\n            Connect-AzAccount -ErrorAction SilentlyContinue\r\n        }\r\n    \r\n        if($null -eq $azContext -and $null -eq $azContext.Account) {\r\n            Write-Debug \"Could not get an Azure PowerShell Context\"\r\n            Write-ErrorRecord -Message \"Unable to get an Az Context with an account.\" -StopScript\r\n        }\r\n    \r\n        if($null -ne $SubscriptionId -and $SubscriptionId.Trim().Length -gt 0) {\r\n            Select-AzSubscription -Subscription $SubscriptionId\r\n        }\r\n    \r\n        $storageAccount = Get-AzStorageAccount -Name $StorageAccountName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue\r\n        if($null -eq $storageAccount) {\r\n            Write-ErrorRecord -Message \"Unable to get an Az Context with an account.\" -StopScript\r\n        }\r\n    \r\n        if(-not $storageAccount.EnableHierarchicalNamespace) {\r\n            Write-ErrorRecord -Message \"The storage account '$StorageAccountName' is not an ADLS Gen 2-enabled Azure Storage Account.\" -StopScript\r\n        }\r\n    \r\n    \r\n        Write-Debug \"Working on path '$Path'.\"\r\n        if($Path.StartsWith(\"/\")) {\r\n            $Path = $Path.Substring(1)\r\n        }\r\n    \r\n        $uri = [System.Uri]::new(\"https://$($storageAccount.primaryEndpoints.Dfs)$($Path)\")\r\n        if($uri.Segments.Length -eq 1) {\r\n            Write-Warning \"Skipping '$Path' as it doesn't have a filesystem in the path.\"\r\n        }\r\n        $fileSystem = $(if($uri.Segments[1].EndsWith(\"/\")) { $uri.Segments[1].Substring(0, $uri.Segments[1].Length - 1) } else { $uri.Segments[1] })\r\n        $filePath = $null\r\n    \r\n        $getParameters = @{\r\n            Context = $storageAccount.Context\r\n            FileSystem = $fileSystem\r\n        }\r\n    \r\n        if($uri.Segments.Length -gt 2) {\r\n            $filePath = (@(2 .. ($uri.Segments.Length - 1)) | ForEach-Object { $uri.Segments[$_] }) -join [String]::Empty\r\n            if($filePath.EndsWith(\"/\")) {\r\n                $filePath = $filePath.Substring(0, $filePath.Length - 1)\r\n            }\r\n            $getParameters = @{\r\n                Context = $storageAccount.Context\r\n                FileSystem = $fileSystem\r\n                Path = $filePath\r\n            }\r\n        }\r\n    \r\n        if($WhatIf) {\r\n            Get-AzDataLakeGen2DeletedItem @getParameters\r\n        }\r\n        else {\r\n            Get-AzDataLakeGen2DeletedItem @getParameters | Restore-AzDataLakeGen2DeletedItem\r\n        }\r\n    }\r\n    finally {\r\n        $DebugPreference = $tempDebugPreference\r\n    }\r\n    "
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Authorization/roleAssignments', variables('raID'))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}{1}ts', parameters('StorageAccountName'), variables('gustring')))]",
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', format('{0}{1}uami', parameters('StorageAccountName'), variables('gustring')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2020-10-01",
+      "name": "[format('{0}{1}te', parameters('StorageAccountName'), variables('gustring'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "kind": "AzurePowerShell",
+      "properties": {
+        "retentionInterval": "P1D",
+        "azPowerShellVersion": "3.0",
+        "arguments": "[format('-correlationId \"{0}\"', variables('correlationId'))]",
+        "scriptContent": "      param (\r\n        [Guid]$correlationId\r\n      )\r\n      $iKey = (Invoke-RestMethod -UseBasicParsing -Uri https://raw.githubusercontent.com/milope/azuretools/master/api/appinsights/instrumentationKey).InstrumentationKey\r\n      $EventName = \"Template deployment completed.\"\r\n      $CustomProperties = @{Type=\"Template\";Category=\"Azure Storage\";Name=\"Recover ADLS Gen 2 Items\";CorrelationId=$correlationId}\r\n      $AuthUserID = [String]::Empty\r\n      if(-not [String]::IsNullOrEmpty($env:USERDOMAIN) -and $env:USERDOMAIN.Length -gt 0) {\r\n        $AuthUserID = \"$($env:USERDOMAIN)\\$($env:USERNAME)\"\r\n      }\r\n      else {\r\n        $AuthUserID = $env:USERNAME\r\n      }\r\n      $body = (@{\r\n          name = \"Microsoft.ApplicationInsights.$iKey.Event\"\r\n          time = [DateTime]::UtcNow.ToString(\"o\")\r\n          iKey = $iKey\r\n          tags = @{\r\n              \"ai.device.id\" = $env:COMPUTERNAME\r\n              \"ai.device.locale\" = $env:USERDOMAIN\r\n              \"ai.user.id\" = $env:USERNAME\r\n              \"ai.user.authUserId\" = $AuthUserID\r\n              \"ai.cloud.roleInstance\" = $env:COMPUTERNAME\r\n          }\r\n          \"data\" = @{\r\n              baseType = \"EventData\"\r\n              baseData = @{\r\n                  ver = \"2\"\r\n                  name = $EventName\r\n                  properties = ($CustomProperties | ConvertTo-Json -Depth 10 | ConvertFrom-Json)\r\n              }\r\n          }\r\n      }) | ConvertTo-Json -Depth 10 -Compress\r\n      $appInsightsEndpoint = \"https://dc.services.visualstudio.com/v2/track\"    \r\n      $temp = $ProgressPreference\r\n      $ProgressPreference = \"SilentlyContinue\"\r\n      try {\r\n        Invoke-WebRequest -Method POST -Uri $appInsightsEndpoint -Headers @{\"Content-Type\"=\"application/x-json-stream\"} -Body $body -TimeoutSec 3 | Out-Null\r\n      }\r\n      catch {}\r\n      finally {\r\n        $ProgressPreference = $temp\r\n      }\r\n    "
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}{1}rec', parameters('StorageAccountName'), variables('gustring')))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}{1}ts', parameters('StorageAccountName'), variables('gustring')))]"
+      ]
+    }
+  ]
+}
