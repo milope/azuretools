@@ -181,7 +181,6 @@ resource Recovery 'Microsoft.Resources/deploymentScripts@2020-10-01' = {
     
     try
     {
-    
         Write-Debug "Getting Azure PowerShell Context."
         $azContext = Get-AzContext
         if($null -eq $azContext -and $null -eq $azContext.Account) {
@@ -213,7 +212,7 @@ resource Recovery 'Microsoft.Resources/deploymentScripts@2020-10-01' = {
             $Path = $Path.Substring(1)
         }
     
-        $uri = [System.Uri]::new("https://$($storageAccount.primaryEndpoints.Dfs)$($Path)")
+        $uri = [System.Uri]::new("$($storageAccount.primaryEndpoints.Dfs)$($Path)")
         if($uri.Segments.Length -eq 1) {
             Write-Warning "Skipping '$Path' as it doesn't have a filesystem in the path."
         }

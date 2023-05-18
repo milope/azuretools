@@ -176,7 +176,7 @@ function Restore-AzADLSGen2Files {
                 $thisPath = $thisPath.Substring(1)
             }
 
-            $uri = [System.Uri]::new("https://$StorageAccountName.dfs.core.windows.net/$thisPath")
+            $uri = [System.Uri]::new("$($storageAccount.primaryEndpoints.Dfs)$($Path)")
             if($uri.Segments.Length -eq 1) {
                 Write-Warning "Skipping '$thisPath' as it doesn't have a filesystem in the path."
             }
