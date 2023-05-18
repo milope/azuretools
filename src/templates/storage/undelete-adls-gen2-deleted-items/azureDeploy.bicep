@@ -44,8 +44,8 @@ resource TraceEventStart 'Microsoft.Resources/deploymentScripts@2020-10-01' = {
   tags: tags
   kind: 'AzurePowerShell'
   properties: {
-    retentionInterval: 'P1D'
-    azPowerShellVersion:'3.0'
+    retentionInterval: 'PT1M'
+    azPowerShellVersion:'9.7'
     arguments: format('-correlationId "{0}"', correlationId)
     scriptContent: '''
       param (
@@ -131,7 +131,7 @@ resource Recovery 'Microsoft.Resources/deploymentScripts@2020-10-01' = {
     }
   }
   properties: {
-    retentionInterval: 'P1D'
+    retentionInterval: 'PT1M'
     azPowerShellVersion:'9.7'
     arguments: format('-SubscriptionId "{0}" -ResourceGroupName "{1}" -StorageAccountName "{2}" -Path "{3}"{4}', subscription().subscriptionId, resourceGroup().name, StorageAccountName, Path, whatIfFlag)
     scriptContent: '''
@@ -260,8 +260,8 @@ resource TraceEventEnd 'Microsoft.Resources/deploymentScripts@2020-10-01' = {
   ]
   kind: 'AzurePowerShell'
   properties: {
-    retentionInterval: 'P1D'
-    azPowerShellVersion:'3.0'
+    retentionInterval: 'PT1M'
+    azPowerShellVersion:'9.7'
     arguments: format('-correlationId "{0}"', correlationId)
     scriptContent: '''
       param (
