@@ -31,6 +31,7 @@ function Send-HttpProbe {
         [String][Parameter(Mandatory = $true)]$Hostname,
         [String][Parameter(Mandatory = $false)]$HttpHost,
         [String][Parameter(Mandatory = $false)]$Path = "/",
+        [Hashtable][Parameter(Mandatory = $false)]$Headers,
         [Switch]$UseExperimentalDnsClient
     )
     begin {
@@ -1004,10 +1005,6 @@ function Send-HttpProbe {
     }
     process {
 
-        #$test1Name = "DNS Resolution"
-        #$test1Result = "Not Started"
-        #$test1Output = ""
-
         $test2Name = "TCP Connection"
         $test2Result = "Not Started"
         $test2Output = "DNS Resolution test failed"
@@ -1021,8 +1018,6 @@ function Send-HttpProbe {
         $test4Output = "Either DNS resolution, TCP connection or SSL handshake tests failed."
 
         $test5Name = "Read Web Response Status"
-        #$test5Result = "Not Started"
-        #$test5Output = "Either DNS resolution, TCP connection, SSL handshake or Web Request tests failed."
 
         $stop = $false
         $parsedip = [System.Net.IPAddress]::Any
@@ -1251,7 +1246,14 @@ function Send-HttpProbe {
 
 
         
-        $webRequest = "GET $($Path) HTTP/1.1`r`nHost: $($HttpHost)`r`nUser-Agent: milope+send+http+probe+test`r`n`r`n"
+        $webRequest = "GET $($Path) HTTP/1.1`r`nHost: $($HttpHost)`r`nUser-Agent: milope+send+http+probe+test"
+        if($PSBoundParameters["Headers"] -and $null -ne $Headers -and $Headers.Count -gt 0) {
+            $Headers.Keys | Where-Object { $_ -ne "User-Agent" -or $_ -ne "Host" } | ForEach-Object {
+                $webRequest += "`r`n$($_): $($Headers[$_])"
+            }
+        }
+        $webRequest += "`r`n`r`n"
+
         try {
 
             Send-ToNetworkStream -NetworkStream $stream -Buffer ([Text.Encoding]::UTF8.GetBytes($webRequest)) | Out-Null
@@ -1304,59 +1306,7 @@ function Send-HttpProbe {
                 }
             ) | Out-Null
         }
-
-
-
-        # Get status line
-        <#
-        while ($true) {
-            try {
-                $read = Get-FromNetworkSteam -Buffer $buffer -NetworkStream $stream -Offset 0 -Length $bufferSize
-            }
-            catch {
-                $exp = Get-InnerMostException -Exception $_.Exception
-                $test5Result = "Failed"
-                if ($exp.GetType().Name -eq "SocketException") {
-                    $test5Output = "[$($exp.GetType().Name)] $($exp.Message) (WinSock error $($exp.SocketErrorCode))."
-                }
-                else {
-                    $test5Output = "[$($exp.GetType().Name)] $($exp.Message)."
-                }
-            }
-            if ($read -eq 0) {
-                $test5Result = "Failed"
-                $test5Output = "Remote Server disconnected."
-                break
-            }
-
-            $idx = Get-IndexOfLineBreak -Buffer $buffer -BytesRead $read
-            if ($idx -gt -1) {
-                $statusLine = Get-BufferAsString -Buffer $buffer -Length $idx
-                break
-            }
-        }
-
-        if ($null -ne $statusLine) {
-            $statusLineSplit = $statusLine.Split(' ', 3)
-            $statusCode = $statusLineSplit[1]
-            $statusDescription = $statusLineSplit[2]
-
-            $test5Result = "Succeeded"
-            $test5Output = "Response Status Code: $($statusCode), Description: $($statusDescription). More parsing to come in the future."
-        }
-        elseif ($test5Output -ne "Failed") {
-            $test5Result = "Failed"
-            $test5Output = "For an unknown reason, couldn't parse the status line from the response."
-        }
-
-        $final.Add(([PSCustomObject]@(
-            [PSCustomObject]@{
-                TestType   = $test5Name
-                TestResult = $test5Result
-                TestOutput = $test5Output
-            }
-        ))) | Out-Null #>
-
+        
         Invoke-SocketCleanup -Socket $socket -NetworkStream $netStream -SslStream $sslStream
         $final
     }
