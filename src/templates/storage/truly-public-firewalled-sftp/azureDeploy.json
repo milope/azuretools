@@ -1,0 +1,317 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.4.1008.15138",
+      "templateHash": "8490730057696935998"
+    }
+  },
+  "parameters": {
+    "ResourcePrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "Use this parameter to prefix all resources created."
+      }
+    },
+    "Location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Use this parameter to override the default resource locations. If unspecified, the resource group's location will be used."
+      }
+    },
+    "AllowedIPs": {
+      "type": "array",
+      "metadata": {
+        "description": "Allowed IP Address esto allow through the Firewall. Specify in CIDR notation."
+      }
+    },
+    "VnetAddressSpace": {
+      "type": "string",
+      "defaultValue": "10.0.0.0/24",
+      "metadata": {
+        "description": "Use this parameter to specify and address space for the virtual network where the Azure Firewall will run."
+      }
+    },
+    "FirewallDnsLabel": {
+      "type": "string",
+      "metadata": {
+        "description": "Use this parameter to specify a DNS label for the Azure Firewall public IP."
+      }
+    },
+    "SftpUserContainerName": {
+      "type": "string",
+      "metadata": {
+        "description": "Use this parameter to specify and create a container name for the Sftp User, if needed."
+      }
+    },
+    "SftpUser": {
+      "type": "string",
+      "metadata": {
+        "description": "Use this parameter to specify and create an Sftp user, if needed. The password or key will need to be generated via the Portal."
+      }
+    }
+  },
+  "functions": [],
+  "variables": {
+    "tags": {
+      "LabCreatedBy": "Michael Lopez",
+      "LabCreatedOn": "2023-06-26",
+      "LabVersion": "1.0",
+      "LabCategory": "Storage"
+    },
+    "correlationId": "[guid(uniqueString(deployment().name))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2020-10-01",
+      "name": "[format('{0}trackEventStart', parameters('ResourcePrefix'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "kind": "AzurePowerShell",
+      "properties": {
+        "retentionInterval": "PT1H",
+        "azPowerShellVersion": "9.7",
+        "arguments": "[format('-correlationId \"{0}\"', variables('correlationId'))]",
+        "scriptContent": "      param (\r\n        [Guid]$correlationId\r\n      )\r\n      $iKey = (Invoke-RestMethod -UseBasicParsing -Uri https://raw.githubusercontent.com/milope/azuretools/master/api/appinsights/instrumentationKey).InstrumentationKey\r\n      $EventName = \"Template deployment started.\"\r\n      $CustomProperties = @{Type=\"Template\";Category=\"Azure Storage\";Name=\"Truly Public Azure Storage SFTP Service\";CorrelationId=$correlationId}\r\n      $AuthUserID = [String]::Empty\r\n      if(-not [String]::IsNullOrEmpty($env:USERDOMAIN) -and $env:USERDOMAIN.Length -gt 0) {\r\n        $AuthUserID = \"$($env:USERDOMAIN)\\$($env:USERNAME)\"\r\n      }\r\n      else {\r\n        $AuthUserID = $env:USERNAME\r\n      }\r\n      $body = (@{\r\n          name = \"Microsoft.ApplicationInsights.$iKey.Event\"\r\n          time = [DateTime]::UtcNow.ToString(\"o\")\r\n          iKey = $iKey\r\n          tags = @{\r\n              \"ai.device.id\" = $env:COMPUTERNAME\r\n              \"ai.device.locale\" = $env:USERDOMAIN\r\n              \"ai.user.id\" = $env:USERNAME\r\n              \"ai.user.authUserId\" = $AuthUserID\r\n              \"ai.cloud.roleInstance\" = $env:COMPUTERNAME\r\n          }\r\n          \"data\" = @{\r\n              baseType = \"EventData\"\r\n              baseData = @{\r\n                  ver = \"2\"\r\n                  name = $EventName\r\n                  properties = ($CustomProperties | ConvertTo-Json -Depth 10 | ConvertFrom-Json)\r\n              }\r\n          }\r\n      }) | ConvertTo-Json -Depth 10 -Compress\r\n      $appInsightsEndpoint = \"https://dc.services.visualstudio.com/v2/track\"    \r\n      $temp = $ProgressPreference\r\n      $ProgressPreference = \"SilentlyContinue\"\r\n      try {\r\n        Invoke-WebRequest -Method POST -Uri $appInsightsEndpoint -Headers @{\"Content-Type\"=\"application/x-json-stream\"} -Body $body -TimeoutSec 3 | Out-Null\r\n      }\r\n      catch {}\r\n      finally {\r\n        $ProgressPreference = $temp\r\n      }\r\n    ",
+        "cleanupPreference": "Always"
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2022-11-01",
+      "name": "[format('{0}VNet', parameters('ResourcePrefix'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[parameters('VnetAddressSpace')]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "AzureFirewallSubnet",
+            "properties": {
+              "addressPrefix": "[parameters('VnetAddressSpace')]",
+              "serviceEndpoints": [
+                {
+                  "service": "Microsoft.Storage"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}trackEventStart', parameters('ResourcePrefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/firewallPolicies",
+      "apiVersion": "2022-11-01",
+      "name": "[format('{0}FwPolicies', parameters('ResourcePrefix'))]",
+      "tags": "[variables('tags')]",
+      "location": "[parameters('Location')]",
+      "properties": {
+        "sku": {
+          "tier": "Standard"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}trackEventStart', parameters('ResourcePrefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2022-09-01",
+      "name": "[format('{0}sftp', parameters('ResourcePrefix'))]",
+      "kind": "StorageV2",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "properties": {
+        "accessTier": "Hot",
+        "isHnsEnabled": true,
+        "isLocalUserEnabled": true,
+        "isSftpEnabled": true,
+        "minimumTlsVersion": "TLS1_2",
+        "supportsHttpsTrafficOnly": true,
+        "networkAcls": {
+          "defaultAction": "Deny",
+          "bypass": "AzureServices",
+          "virtualNetworkRules": [
+            {
+              "id": "[format('{0}/subnets/AzureFirewallSubnet', resourceId('Microsoft.Network/virtualNetworks', format('{0}VNet', parameters('ResourcePrefix'))))]"
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}trackEventStart', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}VNet', parameters('ResourcePrefix')))]"
+      ]
+    },
+    {
+      "condition": "[and(greater(length(trim(parameters('SftpUserContainerName'))), 0), greater(length(trim(parameters('SftpUser'))), 0))]",
+      "type": "Microsoft.Storage/storageAccounts/blobServices",
+      "apiVersion": "2022-09-01",
+      "name": "[format('{0}/{1}', format('{0}sftp', parameters('ResourcePrefix')), 'default')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', format('{0}sftp', parameters('ResourcePrefix')))]"
+      ]
+    },
+    {
+      "condition": "[greater(length(trim(parameters('SftpUserContainerName'))), 0)]",
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "apiVersion": "2022-09-01",
+      "name": "[format('{0}/{1}/{2}', format('{0}sftp', parameters('ResourcePrefix')), 'default', parameters('SftpUserContainerName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', format('{0}sftp', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', format('{0}sftp', parameters('ResourcePrefix')), 'default')]"
+      ]
+    },
+    {
+      "condition": "[greater(length(trim(parameters('SftpUserContainerName'))), 0)]",
+      "type": "Microsoft.Storage/storageAccounts/localUsers",
+      "apiVersion": "2022-09-01",
+      "name": "[format('{0}/{1}', format('{0}sftp', parameters('ResourcePrefix')), parameters('SftpUser'))]",
+      "properties": {
+        "homeDirectory": "[parameters('SftpUserContainerName')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', format('{0}sftp', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', format('{0}sftp', parameters('ResourcePrefix')), 'default', parameters('SftpUserContainerName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2022-11-01",
+      "name": "[format('{0}FwPublicIP', parameters('ResourcePrefix'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "sku": {
+        "name": "Standard"
+      },
+      "properties": {
+        "publicIPAddressVersion": "IPv4",
+        "publicIPAllocationMethod": "Static",
+        "dnsSettings": {
+          "domainNameLabel": "[parameters('FirewallDnsLabel')]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}trackEventStart', parameters('ResourcePrefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/firewallPolicies/ruleCollectionGroups",
+      "apiVersion": "2022-11-01",
+      "name": "[format('{0}/{1}', format('{0}FwPolicies', parameters('ResourcePrefix')), 'storageDNATRules')]",
+      "properties": {
+        "priority": 1001,
+        "ruleCollections": [
+          {
+            "ruleCollectionType": "FirewallPolicyNatRuleCollection",
+            "action": {
+              "type": "DNAT"
+            },
+            "name": "storageDNATRules",
+            "priority": 1000,
+            "rules": [
+              {
+                "ruleType": "NatRule",
+                "description": "Use this to NAT to Azure Storage.",
+                "sourceAddresses": "[parameters('AllowedIPs')]",
+                "destinationAddresses": [
+                  "[reference(resourceId('Microsoft.Network/publicIPAddresses', format('{0}FwPublicIP', parameters('ResourcePrefix')))).ipAddress]"
+                ],
+                "destinationPorts": [
+                  "22"
+                ],
+                "ipProtocols": [
+                  "TCP"
+                ],
+                "translatedFqdn": "[format('{0}.blob.{1}', format('{0}sftp', parameters('ResourcePrefix')), environment().suffixes.storage)]",
+                "translatedPort": "22"
+              }
+            ]
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/firewallPolicies', format('{0}FwPolicies', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}FwPublicIP', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', format('{0}sftp', parameters('ResourcePrefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/azureFirewalls",
+      "apiVersion": "2022-11-01",
+      "name": "[format('{0}Fw', parameters('ResourcePrefix'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "firewallPolicy": {
+          "id": "[resourceId('Microsoft.Network/firewallPolicies', format('{0}FwPolicies', parameters('ResourcePrefix')))]"
+        },
+        "sku": {
+          "name": "AZFW_VNet",
+          "tier": "Standard"
+        },
+        "ipConfigurations": [
+          {
+            "name": "ipConfig",
+            "properties": {
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}FwPublicIP', parameters('ResourcePrefix')))]"
+              },
+              "subnet": {
+                "id": "[format('{0}/subnets/AzureFirewallSubnet', resourceId('Microsoft.Network/virtualNetworks', format('{0}VNet', parameters('ResourcePrefix'))))]"
+              }
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/firewallPolicies/ruleCollectionGroups', format('{0}FwPolicies', parameters('ResourcePrefix')), 'storageDNATRules')]",
+        "[resourceId('Microsoft.Network/firewallPolicies', format('{0}FwPolicies', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}FwPublicIP', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}trackEventStart', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}VNet', parameters('ResourcePrefix')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2020-10-01",
+      "name": "[format('{0}-trackEventEnd', parameters('ResourcePrefix'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "kind": "AzurePowerShell",
+      "properties": {
+        "retentionInterval": "PT1H",
+        "azPowerShellVersion": "9.7",
+        "arguments": "[format('-correlationId \"{0}\"', variables('correlationId'))]",
+        "scriptContent": "      param (\r\n        [Guid]$correlationId\r\n      )\r\n      $iKey = (Invoke-RestMethod -UseBasicParsing -Uri https://raw.githubusercontent.com/milope/azuretools/master/api/appinsights/instrumentationKey).InstrumentationKey\r\n      $EventName = \"Template deployment completed.\"\r\n      $CustomProperties = @{Type=\"Template\";Category=\"Azure Storage\";Name=\"Truly Public Azure Storage SFTP Service\";CorrelationId=$correlationId}\r\n      $AuthUserID = [String]::Empty\r\n      if(-not [String]::IsNullOrEmpty($env:USERDOMAIN) -and $env:USERDOMAIN.Length -gt 0) {\r\n        $AuthUserID = \"$($env:USERDOMAIN)\\$($env:USERNAME)\"\r\n      }\r\n      else {\r\n        $AuthUserID = $env:USERNAME\r\n      }\r\n      $body = (@{\r\n          name = \"Microsoft.ApplicationInsights.$iKey.Event\"\r\n          time = [DateTime]::UtcNow.ToString(\"o\")\r\n          iKey = $iKey\r\n          tags = @{\r\n              \"ai.device.id\" = $env:COMPUTERNAME\r\n              \"ai.device.locale\" = $env:USERDOMAIN\r\n              \"ai.user.id\" = $env:USERNAME\r\n              \"ai.user.authUserId\" = $AuthUserID\r\n              \"ai.cloud.roleInstance\" = $env:COMPUTERNAME\r\n          }\r\n          \"data\" = @{\r\n              baseType = \"EventData\"\r\n              baseData = @{\r\n                  ver = \"2\"\r\n                  name = $EventName\r\n                  properties = ($CustomProperties | ConvertTo-Json -Depth 10 | ConvertFrom-Json)\r\n              }\r\n          }\r\n      }) | ConvertTo-Json -Depth 10 -Compress\r\n      $appInsightsEndpoint = \"https://dc.services.visualstudio.com/v2/track\"    \r\n      $temp = $ProgressPreference\r\n      $ProgressPreference = \"SilentlyContinue\"\r\n      try {\r\n        Invoke-WebRequest -Method POST -Uri $appInsightsEndpoint -Headers @{\"Content-Type\"=\"application/x-json-stream\"} -Body $body -TimeoutSec 3 | Out-Null\r\n      }\r\n      catch {}\r\n      finally {\r\n        $ProgressPreference = $temp\r\n      }\r\n    ",
+        "cleanupPreference": "Always"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/azureFirewalls', format('{0}Fw', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/firewallPolicies/ruleCollectionGroups', format('{0}FwPolicies', parameters('ResourcePrefix')), 'storageDNATRules')]",
+        "[resourceId('Microsoft.Network/firewallPolicies', format('{0}FwPolicies', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Storage/storageAccounts/localUsers', format('{0}sftp', parameters('ResourcePrefix')), parameters('SftpUser'))]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}FwPublicIP', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', format('{0}sftp', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', format('{0}sftp', parameters('ResourcePrefix')), 'default')]",
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', format('{0}sftp', parameters('ResourcePrefix')), 'default', parameters('SftpUserContainerName'))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}trackEventStart', parameters('ResourcePrefix')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}VNet', parameters('ResourcePrefix')))]"
+      ]
+    }
+  ]
+}

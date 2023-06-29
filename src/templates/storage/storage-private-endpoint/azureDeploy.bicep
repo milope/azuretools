@@ -29,7 +29,8 @@ param Location string = resourceGroup().location
 var tags = {
   LabCreatedBy: 'Michael Lopez'
   LabCreatedOn: '2021-11-13'
-  LabVersion: '1.0'
+  LabUpdatedOn: '2023-05-22'
+  LabVersion: '1.1'
   LabCategory: 'Azure Storage'
 }
 
@@ -103,7 +104,8 @@ resource PrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = {
 }
 
 resource PrivateDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
-  name: '${PrivateDnsZone.name}/${VNET.name}-link'
+  parent: PrivateDnsZone
+  name: '${VNET.name}-link'
   location: 'global'
   properties: {
     registrationEnabled: false
@@ -114,7 +116,8 @@ resource PrivateDnsZoneLink 'Microsoft.Network/privateDnsZones/virtualNetworkLin
 }
 
 resource PrivateDnsZoneGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2021-05-01' = {
-  name: '${PrivateEndpoint.name}/dnsZoneGroup'
+  parent: PrivateEndpoint
+  name: 'dnsZoneGroup'
   properties: {
     privateDnsZoneConfigs: [
       {
