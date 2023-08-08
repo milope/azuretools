@@ -1,0 +1,29 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "ResourcePrefix": {
+            "value": "GEN-RESOURCE-PREFIX"
+        },
+        "Location": {
+            "value": "GEN-LOCATION"
+        },
+        "AllowedIPs": {
+            "value": [
+                "GEN-ALLOWED-IPS"
+            ]
+        },
+        "VnetAddressSpace": {
+            "value": "GEN-VNET-ADDRESS-SPACE"
+        },
+        "FirewallDnsLabel": {
+            "value": "GEN-FIREWALL-DNS-LABEL"
+        },
+        "SftpUserContainerName": {
+            "value": "GEN-USER-CONTAINER-NAME"
+        },
+        "SftpUser": {
+            "value": "GEN-USER"
+        }
+    }
+}

@@ -1,0 +1,42 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "ApiManagementSubnetAddressRange": {
+            "value": "GEN-APIM-SUBNET-ADDR-RANGE"
+        },
+        "ApiManagementDnsLabel": {
+            "value": "GEN-APIM-DNS-LABEL"
+        },
+        "ApplicationGatewayDnsLabel": {
+            "value": "GEN-APPGW-DNS-LABEL"
+        },
+        "ApplicationGatewaySslCertificate": {
+            "value": "GEN-APPGW-SSL-CERT"
+        },
+        "ApplicationGatewaySslCertificatePassword": {
+            "value": "GEN-APPGW-SSL-CERT-PWD"
+        },
+        "ApplicationGatewaySubnetAddressRange": {
+            "value": "GEN-APPGW-SUBNET-ADDR-RANGE"
+        },
+        "ApplicationGatewayTrustedClientCerts": {
+            "value": "GEN-APPGW-TRUSTED-CLIENT-CERTS"
+        },
+        "MyIP": {
+            "value": "GEN-MYIP"
+        },
+        "PublisherEmail": {
+            "value": "GEN-PUBLISHER-EMAIL"
+        },
+        "PublisherName": {
+            "value": "GEN-PUBLISHER-NAME"
+        },
+        "ResourcePrefix": {
+            "value": "GEN-RESOURCE-PREFIX"
+        },
+        "VnetAddressRange": {
+            "value": "GEN-VNET-ADDR-RANGE"
+        }
+    }
+}

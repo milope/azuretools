@@ -1,0 +1,30 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "StorageAccountName": {
+            "value": "GEN-STORAGE-ACCOUNT-NAME"
+        },
+        "Location": {
+            "value": "GEN-LOCATION"
+        },
+        "AllowedIP": {
+            "value": "GEN-ALLOWED-IP"
+        },
+        "JumpboxUsername": {
+            "value": "GEN-JUMPBOX-USERNAME"
+        },
+        "JumpboxPassword": {
+            "value": "GEN-JUMPBOX-PASSWORD"
+        },
+        "SSLSecretURL": {
+            "value": "GEN-SSL-SECRET-URL"
+        },
+        "KeyVaultManagedIdentityId": {
+            "value": "GEN-KEYVAULT-MANAGED-IDENTITY-ID"
+        },
+        "StorageAccessManagedIdentityId": {
+            "value": "GEN-STORAGE-ACCESS-MANAGED-IDENTITY-ID"
+        }
+    }
+}

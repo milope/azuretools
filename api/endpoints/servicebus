@@ -1,0 +1,20 @@
+{
+	"Endpoints": [
+		{
+			"Name": "AzureCloud",
+			"EndpointSuffix": ".servicebus.windows.net"
+		},
+		{
+			"Name": "AzureUSGovernment",
+			"EndpointSuffix": ".servicebus.usgovcloudapi.net"
+		},
+		{
+			"Name": "AzureChinaCloud",
+			"EndpointSuffix": ".servicebus.chinacloudapi.cn"
+		},
+		{
+			"Name": "AzureGermanCloud",
+			"EndpointSuffix": ".servicebus.cloudapi.de"
+		}
+	]
+}

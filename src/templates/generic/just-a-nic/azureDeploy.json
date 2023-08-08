@@ -44,9 +44,6 @@
             "apiVersion": "[variables('network-api-version')]",
             "name": "[variables('subnet-resource-name')]",
             "location": "[resourceGroup().location]",
-            "tags": {
-                "Environment": "Test"
-            },
             "dependsOn": [
                 "[resourceId('Microsoft.Network/virtualNetworks', variables('vnet-name'))]"
             ],

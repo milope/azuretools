@@ -1,0 +1,1055 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "resourcePrefix": {
+            "type": "string",
+            "metadata": {
+                "description": "This value will prefix all resource names"
+            }
+        },
+        "yourIP": {
+            "type": "string",
+            "metadata": {
+                "description": "Add your IP to connect to VMs using Bastion"
+            }
+        },
+        "username": {
+            "type": "string",
+            "metadata": {
+                "description": "Specify a username for your VMSS"
+            }
+        },
+        "password": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Specify a password for your VMSS"
+            }
+        },
+        "sourceVault": {
+            "type": "string",
+            "metadata": {
+                "description": "Specify a Key Vault with the cluster certificate"
+            }
+        },
+        "secretUri": {
+            "type": "string",
+            "metadata": {
+                "description": "Specify a certificate secret"
+            }
+        },
+        "certificateThumbprint": {
+            "type": "string",
+            "metadata": {
+                "description": "Specify a password for your VMSS"
+            }
+        }
+    },
+    "variables": {
+        "sfSpokeVnetName": "[concat(parameters('resourcePrefix'), '-sf-spoke-vnet')]",
+        "bastionHubVnetName": "[concat(parameters('resourcePrefix'), '-bastion-hub-vnet')]",
+        "hubVnetName": "[concat(parameters('resourcePrefix'), '-fw-hub-vnet')]",
+        "firewallPublicIpName": "[concat(parameters('resourcePrefix'), '-fw-pip')]",
+        "firewallDnsLabel": "[toLower(concat(parameters('resourcePrefix'), 'sffw'))]",
+        "firewallName": "[concat(parameters('resourcePrefix'), '-main-azfw')]",
+        "firewalPolicyName": "[concat(parameters('resourcePrefix'), '-fwpolicy')]",
+        "omsName": "[concat(parameters('resourcePrefix'), '-oms')]",
+        "udrName": "[concat(parameters('resourcePrefix'), '-udr')]",
+        "nsgName": "[concat(parameters('resourcePrefix'), '-nsg')]",
+        "bastionNsgName": "[concat(parameters('resourcePrefix'), '-bastion-nsg')]",
+        "bastionName": "[concat(parameters('resourcePrefix'), '-bastion')]",
+        "bastionDnsName": "[toLower(concat(parameters('resourcePrefix'), '-bastion'))]",
+        "bastionPublicIpName": "[concat(parameters('resourcePrefix'), '-bastion-pip')]",
+        "vmssName": "[concat(parameters('resourcePrefix'), '-sys')]",
+        "computerNamePrefix": "[toLower(concat(parameters('resourcePrefix'), 'sys'))]",
+        "ilbName": "[concat(parameters('resourcePrefix'), '-ilb')]",
+        "sfName": "[concat(parameters('resourcePrefix'), '-sf')]",
+        "supportLogStorageAccountName": "[toLower(concat('sflogs', uniqueString(resourceGroup().id)))]",
+        "appDiagnosticsStorageAccountName": "[toLower(concat('wad', uniqueString(resourceGroup().id)))]"
+    },
+    "resources": [
+        {
+            "apiVersion": "2021-04-01",
+            "type": "Microsoft.Storage/storageAccounts",
+            "name": "[variables('supportLogStorageAccountName')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [],
+            "properties": {},
+            "kind": "Storage",
+            "sku": {
+                "name": "Standard_LRS"
+            },
+            "tags": {
+                "resourceType": "Service Fabric",
+                "clusterName": "[variables('sfName')]"
+            }
+        },
+        {
+            "apiVersion": "2021-04-01",
+            "type": "Microsoft.Storage/storageAccounts",
+            "name": "[variables('appDiagnosticsStorageAccountName')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [],
+            "properties": {},
+            "kind": "Storage",
+            "sku": {
+                "name": "Standard_LRS"
+            },
+            "tags": {
+                "resourceType": "Service Fabric",
+                "clusterName": "[variables('sfName')]"
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2020-11-01",
+            "comments": "This is a blank NSG",
+            "dependsOn": [],
+            "name": "[variables('nsgName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": []
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2020-11-01",
+            "comments": "This is the Bastion NSG",
+            "dependsOn": [],
+            "name": "[variables('bastionNsgName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "allow-me-http-inbound",
+                        "properties": {
+                            "access": "Allow",
+                            "priority": 101,
+                            "description": "Allow myself access to Bastion",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "443",
+                            "direction": "Inbound",
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "[concat(parameters('yourIP'), '/32')]",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "allow-gateway-manager-inbound",
+                        "properties": {
+                            "access": "Allow",
+                            "priority": 102,
+                            "description": "Allow Gateway Manager Inbound",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "443",
+                            "direction": "Inbound",
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "GatewayManager",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "allow-slb-inbound",
+                        "properties": {
+                            "access": "Allow",
+                            "priority": 103,
+                            "description": "Allow Azure SLB Inbound",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "443",
+                            "direction": "Inbound",
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "AzureLoadBalancer",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "allow-intercomm-inbound",
+                        "properties": {
+                            "access": "Allow",
+                            "priority": 104,
+                            "description": "Allow Bastion Intercommunication Inbound",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "destinationPortRanges": ["8080","5701"],
+                            "direction": "Inbound",
+                            "protocol": "*",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "allow-rdp-ssh-outbound",
+                        "properties": {
+                            "access": "Allow",
+                            "priority": 101,
+                            "description": "Allow RDP and SSH outbound",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "destinationPortRanges": ["22", "3389"],
+                            "direction": "Outbound",
+                            "protocol": "*",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "allow-azure-cloud-outbound",
+                        "properties": {
+                            "access": "Allow",
+                            "priority": 102,
+                            "description": "Allow Azure Cloud outbound",
+                            "destinationAddressPrefix": "AzureCloud",
+                            "destinationPortRange": "443",
+                            "direction": "Outbound",
+                            "protocol": "Tcp",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "allow-intercomm-outbound",
+                        "properties": {
+                            "access": "Allow",
+                            "priority": 103,
+                            "description": "Allow Bastion Intercommunication Outbound",
+                            "destinationAddressPrefix": "VirtualNetwork",
+                            "destinationPortRanges": ["8080","5701"],
+                            "direction": "Outbound",
+                            "protocol": "*",
+                            "sourceAddressPrefix": "VirtualNetwork",
+                            "sourcePortRange": "*"
+                        }
+                    },
+                    {
+                        "name": "allow-get-session-information",
+                        "properties": {
+                            "access": "Allow",
+                            "priority": 104,
+                            "description": "Allow Get Session Information Outbound",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "80",
+                            "direction": "Outbound",
+                            "protocol": "*",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.OperationalInsights/workspaces",
+            "apiVersion": "2020-10-01",
+            "comments": "Creating this Log Analytics workspace to store firewall logs",
+            "name": "[variables('omsName')]",
+            "dependsOn": [],
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "publicNetworkAccessForIngestion": "Enabled",
+                "publicNetworkAccessForQuery": "Enabled",
+                "sku": {
+                    "name": "pergb2018"
+                },
+                "retentionInDays": 30
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2020-11-01",
+            "comments": "This will be the Service Fabric spoke VNET",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "name": "[variables('sfSpokeVnetName')]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "192.168.0.0/24"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "servicefabric",
+                        "properties": {
+                            "addressPrefix": "192.168.0.0/24",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2020-11-01",
+            "comments": "This will be the Bastion spoke VNET",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('bastionNsgName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "name": "[variables('bastionHubVnetName')]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "192.168.1.0/24"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "AzureBastionSubnet",
+                        "properties": {
+                            "addressPrefix": "192.168.1.0/24",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('bastionNsgName'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2020-11-01",
+            "comments": "This will be the Azure Firewall hub VNET",
+            "dependsOn": [],
+            "location": "[resourceGroup().location]",
+            "name": "[variables('hubVnetName')]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "192.168.2.0/24"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "AzureFirewallSubnet",
+                        "properties": {
+                            "addressPrefix": "192.168.2.0/24"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2020-11-01",
+            "location": "[resourceGroup().location]",
+            "name": "[variables('firewallPublicIpName')]",
+            "sku": {
+                "name": "Standard"
+            },
+            "properties": {
+                "dnsSettings": {
+                    "domainNameLabel": "[variables('firewallDnsLabel')]"
+                },
+                "publicIPAddressVersion": "IPv4",
+                "publicIPAllocationMethod": "Static"
+            }
+        },
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2020-11-01",
+            "location": "[resourceGroup().location]",
+            "name": "[variables('bastionPublicIpName')]",
+            "sku": {
+                "name": "Standard"
+            },
+            "properties": {
+                "dnsSettings": {
+                    "domainNameLabel": "[variables('bastionDnsName')]"
+                },
+                "publicIPAddressVersion": "IPv4",
+                "publicIPAllocationMethod": "Static"
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+            "apiVersion": "2020-11-01",
+            "comments": "Peering SF Spoke to Hub VNET",
+            "name": "[concat(variables('sfSpokeVnetName'), '/sf-to-hub-peering')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('hubVnetName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('sfSpokeVnetName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "allowForwardedTraffic": true,
+                "allowVirtualNetworkAccess": true,
+                "remoteVirtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('hubVnetName'))]"
+                } 
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+            "apiVersion": "2020-11-01",
+            "comments": "Peering Bastion Hub to SF VNET",
+            "name": "[concat(variables('bastionHubVnetName'), '/bastion-to-sf-peering')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('sfSpokeVnetName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('bastionHubVnetName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "allowForwardedTraffic": true,
+                "allowVirtualNetworkAccess": true,
+                "remoteVirtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('sfSpokeVnetName'))]" 
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+            "apiVersion": "2020-11-01",
+            "comments": "Peering SF Spoke to Hub VNET",
+            "name": "[concat(variables('hubVnetName'), '/hub-to-sf-peering')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('hubVnetName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('sfSpokeVnetName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "allowForwardedTraffic": true,
+                "allowVirtualNetworkAccess": true,
+                "remoteVirtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('sfSpokeVnetName'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
+            "apiVersion": "2020-11-01",
+            "comments": "Peering SF Spoke to Bastion Hub",
+            "name": "[concat(variables('sfSpokeVnetName'), '/sf-to-bastion-peering')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('sfSpokeVnetName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('bastionHubVnetName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "allowForwardedTraffic": true,
+                "allowVirtualNetworkAccess": true,
+                "remoteVirtualNetwork": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('bastionHubVnetName'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/firewallPolicies",
+            "apiVersion": "2020-11-01",
+            "comments": "Firewall policy for my firewall",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses',variables('firewallPublicIpName'))]",
+                "[resourceId('Microsoft.Network/loadBalancers', variables('ilbName'))]"
+            ],
+            "name": "[variables('firewalPolicyName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "sku": {
+                    "tier": "Standard"
+                }
+            },
+            "resources": [
+                {
+                    "type": "ruleCollectionGroups",
+                    "apiVersion": "2020-11-01",
+                    "comments": "Rule Collection Groups",
+                    "location": "[resourceGroup().location]",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Network/firewallPolicies', variables('firewalPolicyName'))]"
+                    ],
+                    "name": "ruleCollection",
+                    "properties": {
+                        "priority": 1000,
+                        "ruleCollections": [
+                            {
+                                "name": "service-fabric-filter-rules",
+                                "action": {
+                                    "type": "Allow"
+                                },
+                                "priority": 1001,
+                                "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+                                "rules": [
+                                    {
+                                        "name": "allow-all-outbound",
+                                        "description": "Allow all Internet Outbound SF",
+                                        "ipProtocols": ["Any"],
+                                        "destinationAddresses": ["*"],
+                                        "destinationPorts": ["*"],
+                                        "sourceAddresses": ["192.168.0.0/24"],
+                                        "ruleType": "NetworkRule"
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "service-fabric-nat-rules",
+                                "action": {
+                                    "type": "DNAT"
+                                },
+                                "priority": 1000,
+                                "ruleCollectionType": "FirewallPolicyNatRuleCollection",
+                                "rules": [
+                                    {
+                                        "name": "sf-dnat-rule-gateway",
+                                        "description": "DNAT rule for gateway calls",
+                                        "ruleType": "NatRule",
+                                        "destinationAddresses": ["[reference(resourceId('Microsoft.Network/publicIPAddresses',variables('firewallPublicIpName'))).ipAddress]"],
+                                        "destinationPorts": ["19080"],
+                                        "ipProtocols": ["TCP","UDP"],
+                                        "sourceAddresses": ["*"],
+                                        "translatedAddress": "[reference(resourceId('Microsoft.Network/loadBalancers',variables('ilbName'))).frontendIPConfigurations[0].properties.privateIPAddress]",
+                                        "translatedPort": "19080"
+                                    },
+                                    {
+                                        "name": "sf-dnat-rule-client",
+                                        "description": "DNAT rule for client calls",
+                                        "ruleType": "NatRule",
+                                        "destinationAddresses": ["[reference(resourceId('Microsoft.Network/publicIPAddresses',variables('firewallPublicIpName'))).ipAddress]"],
+                                        "destinationPorts": ["19000"],
+                                        "ipProtocols": ["TCP","UDP"],
+                                        "sourceAddresses": ["*"],
+                                        "translatedAddress": "[reference(resourceId('Microsoft.Network/loadBalancers',variables('ilbName'))).frontendIPConfigurations[0].properties.privateIPAddress]",
+                                        "translatedPort": "19000"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "type": "Microsoft.Network/azureFirewalls",
+            "apiVersion": "2020-11-01",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/firewallPolicies', variables('firewalPolicyName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('hubVnetName'))]",
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('firewallPublicIpName'))]"
+            ],
+            "comments": "This will be our main entry firewall",
+            "location": "[resourceGroup().location]",
+            "name": "[variables('firewallName')]",
+            "properties": {
+                "firewallPolicy": {
+                    "id": "[resourceId('Microsoft.Network/firewallPolicies', variables('firewalPolicyName'))]"
+                },
+                "sku": {
+                    "tier": "Standard",
+                    "name": "AZFW_VNet"
+                },
+                "ipConfigurations": [
+                    {
+                        "name": "sf-public-ip",
+                        "properties": {
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('firewallPublicIpName'))]"
+                            },
+                            "subnet": {
+                                "id": "[concat(resourceId('Microsoft.Network/virtualNetworks', variables('hubVnetName')),'/subnets/AzureFirewallSubnet')]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/azureFirewalls/providers/diagnosticSettings",
+            "apiVersion": "2021-05-01-preview",
+            "location": "[resourceGroup().location]",
+            "name": "[concat(variables('firewallName'), '/Microsoft.Insights/diagnosticSettings')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/azureFirewalls', variables('firewallName'))]",
+                "[resourceId('Microsoft.OperationalInsights/workspaces', variables('omsName'))]"
+            ],
+            "properties": {
+                "workspaceId": "[resourceId('Microsoft.OperationalInsights/workspaces', variables('omsName'))]",
+                "metrics": [
+                    {
+                        "category": "AllMetrics",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    }
+                ],
+                "logs": [
+                    {
+                        "category": "AzureFirewallApplicationRule",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    },
+                    {
+                        "category": "AzureFirewallNetworkRule",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    },
+                    {
+                        "category": "AzureFirewallDnsProxy",
+                        "enabled": true,
+                        "retentionPolicy": {
+                            "enabled": false,
+                            "days": 0
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/routeTables",
+            "apiVersion": "2020-11-01",
+            "comments": "This will push all SF outbound traffic to the Firewall",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/azureFirewalls', variables('firewallName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('bastionHubVnetName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('sfSpokeVnetName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "name": "[variables('udrName')]",
+            "properties": {
+                "disableBgpRoutePropagation": false,
+                "routes": [
+                    {
+                        "name": "force-tunnel",
+                        "properties": {
+                            "addressPrefix": "0.0.0.0/0",
+                            "nextHopType": "VirtualAppliance",
+                            "hasBgpOverride": false,
+                            "nextHopIpAddress": "[reference(resourceId('Microsoft.Network/azureFirewalls',variables('firewallName'))).ipConfigurations[0].properties.privateIPAddress]"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2020-11-01",
+            "comments": "Updating the SF spoke subnet so it forwards all non-specific traffic to Az Firewall",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('sfSpokeVnetName'))]",
+                "[resourceId('Microsoft.Network/routeTables', variables('udrName'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "name": "[concat(variables('sfSpokeVnetName'), '/servicefabric')]",
+            "properties": {
+                "addressPrefix": "192.168.0.0/24",
+                "routeTable": {
+                    "id": "[resourceId('Microsoft.Network/routeTables', variables('udrName'))]"
+                },
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/bastionHosts",
+            "apiVersion": "2020-11-01",
+            "comments": "Bastion Host to connect to SF cluster",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('bastionHubVnetName'))]",
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('bastionPublicIpName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "name": "[variables('bastionName')]",
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ip-config",
+                        "properties": {
+                            "subnet": {
+                                "id": "[concat(resourceId('Microsoft.Network/virtualNetworks', variables('bastionHubVnetName')),'/subnets/AzureBastionSubnet')]"
+                            },
+                            "privateIPAllocationMethod": "Dynamic",
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('bastionPublicIpName'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/loadBalancers",
+            "apiVersion": "2020-11-01",
+            "comments": "This will be our standard ILB",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('sfSpokeVnetName'))]"
+            ],
+            "location": "[resourceGroup().location]",
+            "name": "[variables('ilbName')]",
+            "tags": {
+                "resourceType": "Service Fabric",
+                "clusterName": "[variables('sfName')]"
+            },
+            "sku": {
+                "name": "Standard"
+            },
+            "properties": {
+                "frontendIPConfigurations": [
+                    {
+                        "name": "frontend-ip-config",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[concat(resourceId('Microsoft.Network/virtualNetworks', variables('sfSpokeVnetName')), '/subnets/servicefabric')]"
+                            }
+                        }
+                    }
+                ],
+                "backendAddressPools": [
+                    {
+                        "name": "backend-sf-pool",
+                        "properties": {}
+                    }
+                ],
+                "probes": [
+                    {
+                        "name": "sf-client-probe",
+                        "properties": {
+                            "intervalInSeconds": 5,
+                            "numberOfProbes": 2,
+                            "protocol": "Tcp",
+                            "port": 19000
+                        }
+                    },
+                    {
+                        "name": "sf-gateway-probe",
+                        "properties": {
+                            "intervalInSeconds": 5,
+                            "numberOfProbes": 2,
+                            "protocol": "Tcp",
+                            "port": 19080
+                        }
+                    }
+                ],
+                "loadBalancingRules": [
+                    {
+                        "name": "sf-client-rule",
+                        "properties": {
+                            "backendAddressPool": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('ilbName')), '/backendAddressPools/backend-sf-pool')]"
+                            },
+                            "backendPort": 19000,
+                            "disableOutboundSnat": true,
+                            "enableFloatingIP": false,
+                            "enableTcpReset": false,
+                            "frontendIPConfiguration": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('ilbName')), '/frontendIPConfigurations/frontend-ip-config')]"
+                            },
+                            "idleTimeoutInMinutes": 5,
+                            "protocol": "Tcp",
+                            "frontendPort": 19000,
+                            "loadDistribution": "Default",
+                            "probe": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('ilbName')), '/probes/sf-client-probe')]"
+                            }
+                        }
+                    },
+                    {
+                        "name": "sf-gateway-rule",
+                        "properties": {
+                            "backendAddressPool": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('ilbName')), '/backendAddressPools/backend-sf-pool')]"
+                            },
+                            "backendPort": 19080,
+                            "disableOutboundSnat": true,
+                            "enableFloatingIP": false,
+                            "enableTcpReset": false,
+                            "frontendIPConfiguration": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('ilbName')), '/frontendIPConfigurations/frontend-ip-config')]"
+                            },
+                            "idleTimeoutInMinutes": 5,
+                            "protocol": "Tcp",
+                            "frontendPort": 19080,
+                            "loadDistribution": "Default",
+                            "probe": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('ilbName')), '/probes/sf-gateway-probe')]"
+                            }
+                        }
+                    }
+                ],
+                "inboundNatPools": [
+                    {
+                        "name": "sf-nat-pool",
+                        "properties": {
+                            "backendPort": 3389,
+                            "frontendIPConfiguration": {
+                                "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('ilbName')), '/frontendIPConfigurations/frontend-ip-config')]"
+                            },
+                            "enableFloatingIP": false,
+                            "protocol": "Tcp",
+                            "enableTcpReset": false,
+                            "idleTimeoutInMinutes": 5,
+                            "frontendPortRangeStart": 3389,
+                            "frontendPortRangeEnd": 3395
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachineScaleSets",
+            "apiVersion": "2021-03-01",
+            "location": "[resourceGroup().location]",
+            "name": "[variables('vmssName')]",
+            "tags": {
+                "resourceType": "Service Fabric",
+                "clusterName": "[variables('sfName')]"
+            },
+            "comments": "This will be the SF cluster primary node type",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('sfSpokeVnetName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('supportLogStorageAccountName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('appDiagnosticsStorageAccountName'))]",
+                "[resourceId('Microsoft.Network/loadBalancers', variables('ilbName'))]"
+            ],
+            "sku": {
+                "name": "Standard_D3_v2",
+                "tier": "Standard",
+                "capacity": 3
+            },
+            "properties": {
+                "overprovision": false,
+                "upgradePolicy": {
+                    "mode": "Automatic"
+                },
+                "virtualMachineProfile": {
+                    "extensionProfile": {
+                        "extensions": [
+                            {
+                                "name": "[concat('sf-ext-', variables('vmssName'))]",
+                                "properties": {
+                                    "type": "ServiceFabricNode",
+                                    "autoUpgradeMinorVersion": true,
+                                    "protectedSettings": {
+                                       "StorageAccountKey1": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('supportLogStorageAccountName')),'2015-05-01-preview').key1]",
+                                       "StorageAccountKey2": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('supportLogStorageAccountName')),'2015-05-01-preview').key2]"
+                                    },
+                                    "publisher": "Microsoft.Azure.ServiceFabric",
+                                    "settings": {
+                                        "clusterEndpoint": "[reference(variables('sfName')).clusterEndpoint]",
+                                        "nodeTypeRef": "[variables('vmssName')]",
+                                        "dataPath": "D:\\SvcFab",
+                                        "durabilityLevel": "Bronze",
+                                        "enableParallelJobs": true,
+                                        "nicPrefixOverride": "192.168.0.0/24",
+                                        "certificate": {
+                                            "thumbprint": "[parameters('certificateThumbprint')]",
+                                            "x509StoreName": "My"
+                                        }
+                                    },
+                                    "typeHandlerVersion": "1.0"
+                                }
+                            },
+                            {
+                                "name": "[concat('vm-diag-ext-',variables('vmssName'))]",
+                                "properties": {
+                                    "type": "IaaSDiagnostics",
+                                    "autoUpgradeMinorVersion": true,
+                                    "protectedSettings": {
+                                        "storageAccountName": "[variables('appDiagnosticsStorageAccountName')]",
+                                        "storageAccountKey": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('appDiagnosticsStorageAccountName')),'2015-05-01-preview').key1]",
+                                        "storageAccountEndPoint": "https://core.windows.net/"
+                                    },
+                                    "publisher": "Microsoft.Azure.Diagnostics",
+                                    "settings": {
+                                        "WadCfg": {
+                                            "DiagnosticMonitorConfiguration": {
+                                                "overallQuotaInMB": "50000",
+                                                "EtwProviders": {
+                                                    "EtwEventSourceProviderConfiguration": [
+                                                        {
+                                                            "provider": "Microsoft-ServiceFabric-Actors",
+                                                            "scheduledTransferKeywordFilter": "1",
+                                                            "scheduledTransferPeriod": "PT5M",
+                                                            "DefaultEvents": {
+                                                                "eventDestination": "ServiceFabricReliableActorEventTable"
+                                                            }
+                                                        },
+                                                        {
+                                                            "provider": "Microsoft-ServiceFabric-Services",
+                                                            "scheduledTransferPeriod": "PT5M",
+                                                            "DefaultEvents": {
+                                                                "eventDestination": "ServiceFabricReliableServiceEventTable"
+                                                            }
+                                                        }
+                                                    ],
+                                                    "EtwManifestProviderConfiguration": [
+                                                        {
+                                                            "provider": "cbd93bc2-71e5-4566-b3a7-595d8eeca6e8",
+                                                            "scheduledTransferLogLevelFilter": "Information",
+                                                            "scheduledTransferKeywordFilter": "4611686018427387904",
+                                                            "scheduledTransferPeriod": "PT5M",
+                                                            "DefaultEvents": {
+                                                                "eventDestination": "ServiceFabricSystemEventTable"
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                            }
+                                        },
+                                        "StorageAccount": "[variables('appDiagnosticsStorageAccountName')]"
+                                    },
+                                    "typeHandlerVersion": "1.5"
+                                }
+                            },
+                            {
+                                "name": "[concat('iaas-antimalware-',variables('sfName'))]",
+                                "properties": {
+                                    "publisher": "Microsoft.Azure.Security",
+                                    "type": "IaaSAntimalware",
+                                    "typeHandlerVersion": "1.5",
+                                    "settings": {
+                                        "AntimalwareEnabled": true,
+                                        "Exclusions": {
+                                            "Paths": "D:\\SvcFab;D:\\SvcFab\\Log;C:\\Program Files\\Microsoft Service Fabric",
+                                            "Processes": "Fabric.exe;FabricHost.exe;FabricInstallerService.exe;FabricSetup.exe;FabricDeployer.exe;ImageBuilder.exe;FabricGateway.exe;FabricDCA.exe;FabricFAS.exe;FabricUOS.exe;FabricRM.exe;FileStoreService.exe"
+                                        },
+                                        "RealtimeProtectionEnabled": "true",
+                                        "ScheduledScanSettings": {
+                                            "isEnabled": "true",
+                                            "scanType": "Quick",
+                                            "day": "7",
+                                            "time": "120"
+                                        }
+                                    },
+                                    "protectedSettings": null
+                                }
+                            }
+                        ]
+                    },
+                    "networkProfile": {
+                        "networkInterfaceConfigurations": [
+                            {
+                                "name": "vmssnic",
+                                "properties": {
+                                    "ipConfigurations": [
+                                        {
+                                            "name": "vmssnic-ipconfig",
+                                            "properties": {
+                                                "loadBalancerBackendAddressPools": [
+                                                    {
+                                                        "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('ilbName')), '/backendAddressPools/backend-sf-pool')]"
+                                                    }
+                                                ],
+                                                "loadBalancerInboundNatPools": [{
+                                                        "id": "[concat(resourceId('Microsoft.Network/loadBalancers', variables('ilbName')), '/inboundNatPools/sf-nat-pool')]"
+                                                    }
+                                                ],
+                                                "subnet": {
+                                                    "id": "[concat(resourceId('Microsoft.Network/virtualNetworks', variables('sfSpokeVnetName')), '/subnets/servicefabric')]"
+                                                }
+                                            }
+                                        }
+                                    ],
+                                    "primary": true
+                                }
+                            }
+                        ]
+                    },
+                    "osProfile": {
+                        "adminPassword": "[parameters('password')]",
+                        "adminUsername": "[parameters('username')]",
+                        "computerNamePrefix": "[variables('computerNamePrefix')]",
+                        "secrets": [
+                            {
+                                "sourceVault": {
+                                    "id": "[parameters('sourceVault')]"
+                                },
+                                "vaultCertificates": [
+                                    {
+                                        "certificateStore": "My",
+                                        "certificateUrl": "[parameters('secretUri')]"
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    "storageProfile": {
+                        "imageReference": {
+                            "publisher": "MicrosoftWindowsServer",
+                            "offer": "WindowsServer",
+                            "sku": "2019-Datacenter-with-Containers",
+                            "version": "latest"
+                        },
+                        "osDisk": {
+                            "caching": "ReadOnly",
+                            "createOption": "FromImage",
+                            "managedDisk": {
+                                "storageAccountType": "StandardSSD_LRS"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "type": "Microsoft.ServiceFabric/clusters",
+            "apiVersion": "2021-06-01",
+            "name": "[variables('sfName')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('supportLogStorageAccountName'))]"
+            ],
+            "comments": "Creating the Service Fabric cluster",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "addOnFeatures": [
+                    "RepairManager"
+                ],
+                "certificate": {
+                    "thumbprint": "[parameters('certificateThumbprint')]",
+                    "x509StoreName": "My"
+                },
+                "diagnosticsStorageAccountConfig": {
+                    "blobEndpoint": "[reference(concat('Microsoft.Storage/storageAccounts/', variables('supportLogStorageAccountName')), '2021-04-01').primaryEndpoints.blob]",
+                    "protectedAccountKeyName": "StorageAccountKey1",
+                    "queueEndpoint": "[reference(concat('Microsoft.Storage/storageAccounts/', variables('supportLogStorageAccountName')), '2021-04-01').primaryEndpoints.queue]",
+                    "storageAccountName": "[variables('supportLogStorageAccountName')]",
+                    "tableEndpoint": "[reference(concat('Microsoft.Storage/storageAccounts/', variables('supportLogStorageAccountName')), '2021-04-01').primaryEndpoints.table]"
+                },
+                "fabricSettings": [
+                    {
+                        "parameters": [
+                            {
+                                "name": "ClusterProtectionLevel",
+                                "value": "EncryptAndSign"
+                            }
+                        ],
+                        "name": "Security"
+                    }
+                ],
+                "managementEndpoint": "[concat('https://',reference(variables('firewallPublicIpName')).dnsSettings.fqdn,':19080')]",
+                "nodeTypes": [
+                    {
+                        "name": "[variables('vmssName')]",
+                        "applicationPorts": {
+                            "endPort": 30000,
+                            "startPort": 20000
+                        },
+                        "clientConnectionEndpointPort": 19000,
+                        "durabilityLevel": "Bronze",
+                        "ephemeralPorts": {
+                            "endPort": 65534,
+                            "startPort": 49152
+                        },
+                        "httpGatewayEndpointPort": 19080,
+                        "isPrimary": true,
+                        "reverseProxyEndpointPort": 19081,
+                        "vmInstanceCount": 3
+                    }
+                ],
+                "provisioningState": "Default",
+                "reliabilityLevel": "Bronze",
+                "upgradeMode": "Automatic",
+                "vmImage": "Windows"
+            }
+        }
+    ]
+}

@@ -1,0 +1,45 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "AdminUsername": {
+            "value": "GEN-ADMIN-USERNAME"
+        },
+        "AdminPassword": {
+            "value": "GEN-ADMIN-PASSWORD"
+        },
+        "CertificateKeyVaultResourceId": {
+            "value": "GEN-CERTIFICATE-KEY-VAULT-RESOURCE-ID"
+        },
+        "CertificateSecretUrl": {
+            "value": "GEN-GERTIFICATE-SECRET-URL"
+        },
+        "CertificateThumbprint": {
+            "value": "GEN-CERTIFICATE-THUMBPRINT"
+        },
+        "ClusterProtectionLevel": {
+            "value": "GEN-CLUSTER-PROTECTION-LEVEL"
+        },
+        "LinuxInstanceCount": {
+            "value": "GEN-LINUX-INSTANCE-COUNT"
+        },
+        "LinuxDurability": {
+            "value": "GEN-LINUX-DURABILITY"
+        },
+        "Location": {
+            "value": "GEN-LOCATION"
+        },
+        "MyIP": {
+            "value": "GEN-MY-IP"
+        },
+        "ResourcePrefix": {
+            "value": "GEN-RESOURCE-PREFIX"
+        },
+        "WindowsInstanceCount": {
+            "value": "GEN-WINDOWS-INSTANCE-COUNT"
+        },
+        "WindowsDurability": {
+            "value": "GEN-WINDOWS-DURABILITY"
+        }
+    }
+}

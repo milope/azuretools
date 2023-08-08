@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.4.1008.15138",
+      "templateHash": "3279828281235270069"
+    }
+  },
+  "parameters": {
+    "StoragePrefix": {
+      "type": "string",
+      "maxLength": 3,
+      "minLength": 1,
+      "metadata": {
+        "description": "This will be a prefix for all storage accounts"
+      }
+    },
+    "Amount": {
+      "type": "int",
+      "maxValue": 800,
+      "minValue": 1,
+      "metadata": {
+        "description": "Specify the number of storage accounts"
+      }
+    }
+  },
+  "functions": [],
+  "resources": [
+    {
+      "copy": {
+        "name": "StorageAccounts",
+        "count": "[length(range(0, parameters('Amount')))]"
+      },
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2021-06-01",
+      "name": "[format('{0}stor{1}{2}', parameters('StoragePrefix'), padLeft(string(add(range(0, parameters('Amount'))[copyIndex()], 1)), 4, '0'), uniqueString(resourceGroup().id))]",
+      "location": "[resourceGroup().location]",
+      "sku": {
+        "name": "Premium_LRS"
+      },
+      "kind": "StorageV2"
+    }
+  ]
+}

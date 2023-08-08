@@ -1,0 +1,1100 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.4.1008.15138",
+      "templateHash": "9692415971650795283"
+    }
+  },
+  "parameters": {
+    "StorageAccountName": {
+      "type": "string",
+      "metadata": {
+        "description": "Represents the Storage Account name. Please note Storage Account names must be unique within an Azure Cloud."
+      }
+    },
+    "Location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Specify a location for all the resource. If not specified, the resource group's location will be chosen."
+      }
+    },
+    "AllowedIP": {
+      "type": "string",
+      "metadata": {
+        "description": "Specify an IPv4 to be allowed to connect to the jumpbox VM."
+      }
+    },
+    "JumpboxUsername": {
+      "type": "string",
+      "metadata": {
+        "description": "Specify an administrator username for the jumpbox."
+      }
+    },
+    "JumpboxPassword": {
+      "type": "secureString",
+      "metadata": {
+        "description": "Specify an administrator password for the jumpbox."
+      }
+    },
+    "SSLSecretURL": {
+      "type": "string",
+      "metadata": {
+        "description": "Specify a wildcard key vault certificate secret URL to deploy to all app gateways."
+      }
+    },
+    "KeyVaultManagedIdentityId": {
+      "type": "string",
+      "metadata": {
+        "description": "Specify a user-assigned Managed Identity to associated with App Gateway. Please ensure this identity can access Key Vault's secret"
+      }
+    },
+    "StorageAccessManagedIdentityId": {
+      "type": "string",
+      "metadata": {
+        "description": "Specify a user-assigned Managed Identity to run the Enable Static Websites. Please ensure this identity can perform this task. This template does not grant access to the resources."
+      }
+    }
+  },
+  "functions": [],
+  "variables": {
+    "copy": [
+      {
+        "name": "httpListeners",
+        "count": "[length(variables('storagePEGroupIDs'))]",
+        "input": {
+          "name": "[format('http-listener-{0}', variables('storagePEGroupIDs')[copyIndex('httpListeners')])]",
+          "properties": {
+            "frontendIPConfiguration": {
+              "id": "[resourceId('Microsoft.Network/applicationGateways/frontendIPConfigurations', format('{0}-appgw', parameters('StorageAccountName')), 'frontend-ip')]"
+            },
+            "frontendPort": {
+              "id": "[resourceId('Microsoft.Network/applicationGateways/frontendPorts', format('{0}-appgw', parameters('StorageAccountName')), 'frontend-port-80')]"
+            },
+            "hostName": "[format('{0}.contoso.com', variables('storagePEGroupIDs')[copyIndex('httpListeners')])]",
+            "protocol": "Http"
+          }
+        }
+      },
+      {
+        "name": "httpsListeners",
+        "count": "[length(variables('storagePEGroupIDs'))]",
+        "input": {
+          "name": "[format('https-listener-{0}', variables('storagePEGroupIDs')[copyIndex('httpsListeners')])]",
+          "properties": {
+            "frontendIPConfiguration": {
+              "id": "[resourceId('Microsoft.Network/applicationGateways/frontendIPConfigurations', format('{0}-appgw', parameters('StorageAccountName')), 'frontend-ip')]"
+            },
+            "frontendPort": {
+              "id": "[resourceId('Microsoft.Network/applicationGateways/frontendPorts', format('{0}-appgw', parameters('StorageAccountName')), 'frontend-port-443')]"
+            },
+            "hostName": "[format('{0}.contoso.com', variables('storagePEGroupIDs')[copyIndex('httpsListeners')])]",
+            "protocol": "Https",
+            "requireServerNameIndication": true,
+            "sslCertificate": {
+              "id": "[resourceId('Microsoft.Network/applicationGateways/sslCertificates', format('{0}-appgw', parameters('StorageAccountName')), 'ssl-cert')]"
+            }
+          }
+        }
+      },
+      {
+        "name": "httpToHttpRedirects",
+        "count": "[length(variables('storagePEGroupIDs'))]",
+        "input": {
+          "name": "[format('http-to-https-redirect-{0}', variables('storagePEGroupIDs')[copyIndex('httpToHttpRedirects')])]",
+          "properties": {
+            "httpListener": {
+              "id": "[resourceId('Microsoft.Network/applicationGateways/httpListeners', format('{0}-appgw', parameters('StorageAccountName')), format('http-listener-{0}', variables('storagePEGroupIDs')[copyIndex('httpToHttpRedirects')]))]"
+            },
+            "redirectConfiguration": {
+              "id": "[resourceId('Microsoft.Network/applicationGateways/redirectConfigurations', format('{0}-appgw', parameters('StorageAccountName')), format('http-to-https-{0}', variables('storagePEGroupIDs')[copyIndex('httpToHttpRedirects')]))]"
+            },
+            "ruleType": "Basic",
+            "priority": "[add(100, copyIndex('httpToHttpRedirects'))]"
+          }
+        }
+      },
+      {
+        "name": "httpsRequestRoutingRules",
+        "count": "[length(variables('storagePEGroupIDs'))]",
+        "input": {
+          "name": "[format('main-rule-{0}', variables('storagePEGroupIDs')[copyIndex('httpsRequestRoutingRules')])]",
+          "properties": {
+            "httpListener": {
+              "id": "[resourceId('Microsoft.Network/applicationGateways/httpListeners', format('{0}-appgw', parameters('StorageAccountName')), format('https-listener-{0}', variables('storagePEGroupIDs')[copyIndex('httpsRequestRoutingRules')]))]"
+            },
+            "backendAddressPool": {
+              "id": "[resourceId('Microsoft.Network/applicationGateways/backendAddressPools', format('{0}-appgw', parameters('StorageAccountName')), format('backend-pool-{0}', variables('storagePEGroupIDs')[copyIndex('httpsRequestRoutingRules')]))]"
+            },
+            "backendHttpSettings": {
+              "id": "[resourceId('Microsoft.Network/applicationGateways/backendHttpSettingsCollection', format('{0}-appgw', parameters('StorageAccountName')), format('backend-settings-{0}', variables('storagePEGroupIDs')[copyIndex('httpsRequestRoutingRules')]))]"
+            },
+            "ruleType": "Basic",
+            "priority": "[add(length(variables('storagePEGroupIDs')), copyIndex('httpsRequestRoutingRules'))]"
+          }
+        }
+      }
+    ],
+    "tags": {
+      "LabCreatedBy": "Michael Lopez",
+      "LabCreatedOn": "2022-10-15",
+      "LabVersion": "1.0",
+      "LabCategory": "Azure Storage"
+    },
+    "bastionSubnet": "10.0.3.0/24",
+    "vmSubnet": "10.0.2.0/24",
+    "appGWSubnet": "10.0.1.0/24",
+    "storagePESubnet": "10.0.0.0/24",
+    "storagePEGroupIDs": [
+      "blob",
+      "file",
+      "queue",
+      "table",
+      "web",
+      "dfs"
+    ],
+    "appGWInternalIP": "10.0.1.4",
+    "allHttpListeners": "[concat(variables('httpListeners'), variables('httpsListeners'))]",
+    "allRoutingRules": "[concat(variables('httpToHttpRedirects'), variables('httpsRequestRoutingRules'))]",
+    "correlationId": "[guid(uniqueString(deployment().name))]",
+    "networkApiVersion": "2022-05-01",
+    "networkApiVersionPDNS": "2022-06-01",
+    "computeApiVersion": "2022-08-01"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2020-10-01",
+      "name": "[format('{0}-trackEventStart', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "kind": "AzurePowerShell",
+      "properties": {
+        "retentionInterval": "P1D",
+        "azPowerShellVersion": "3.0",
+        "arguments": "[format('-correlationId \"{0}\"', variables('correlationId'))]",
+        "scriptContent": "      param (\r\n        [Guid]$correlationId\r\n      )\r\n      $iKey = (Invoke-RestMethod -UseBasicParsing -Uri https://raw.githubusercontent.com/milope/azuretools/master/api/appinsights/instrumentationKey).InstrumentationKey\r\n      $EventName = \"Template deployment started.\"\r\n      $CustomProperties = @{Type=\"Template\";Category=\"Azure Storage\";Name=\"Azure Storage Custom Domain HTTPS\";CorrelationId=$correlationId}\r\n      $AuthUserID = [String]::Empty\r\n      if(-not [String]::IsNullOrEmpty($env:USERDOMAIN) -and $env:USERDOMAIN.Length -gt 0) {\r\n        $AuthUserID = \"$($env:USERDOMAIN)\\$($env:USERNAME)\"\r\n      }\r\n      else {\r\n        $AuthUserID = $env:USERNAME\r\n      }\r\n      $body = (@{\r\n          name = \"Microsoft.ApplicationInsights.$iKey.Event\"\r\n          time = [DateTime]::UtcNow.ToString(\"o\")\r\n          iKey = $iKey\r\n          tags = @{\r\n              \"ai.device.id\" = $env:COMPUTERNAME\r\n              \"ai.device.locale\" = $env:USERDOMAIN\r\n              \"ai.user.id\" = $env:USERNAME\r\n              \"ai.user.authUserId\" = $AuthUserID\r\n              \"ai.cloud.roleInstance\" = $env:COMPUTERNAME\r\n          }\r\n          \"data\" = @{\r\n              baseType = \"EventData\"\r\n              baseData = @{\r\n                  ver = \"2\"\r\n                  name = $EventName\r\n                  properties = ($CustomProperties | ConvertTo-Json -Depth 10 | ConvertFrom-Json)\r\n              }\r\n          }\r\n      }) | ConvertTo-Json -Depth 10 -Compress\r\n      $appInsightsEndpoint = \"https://dc.services.visualstudio.com/v2/track\"    \r\n      $temp = $ProgressPreference\r\n      $ProgressPreference = \"SilentlyContinue\"\r\n      try {\r\n        Invoke-WebRequest -Method POST -Uri $appInsightsEndpoint -Headers @{\"Content-Type\"=\"application/x-json-stream\"} -Body $body -TimeoutSec 3 | Out-Null\r\n      }\r\n      catch {}\r\n      finally {\r\n        $ProgressPreference = $temp\r\n      }\r\n    "
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "[variables('networkApiVersion')]",
+      "name": "[format('{0}-appgw-nsg', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "allow-gwm-in",
+            "properties": {
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "Tcp",
+              "description": "Allow Gateway Manager inbound.",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "65200-65535",
+              "priority": 100,
+              "sourceAddressPrefix": "GatewayManager",
+              "sourcePortRange": "*"
+            }
+          },
+          {
+            "name": "allow-slb-in",
+            "properties": {
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "*",
+              "description": "Allow SLB inbound.",
+              "destinationAddressPrefix": "*",
+              "sourceAddressPrefix": "AzureLoadBalancer",
+              "destinationPortRange": "*",
+              "sourcePortRange": "*",
+              "priority": 101
+            }
+          },
+          {
+            "name": "allow-jumpbox-in",
+            "properties": {
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "*",
+              "description": "Allow Jumpbox inbound.",
+              "destinationAddressPrefix": "*",
+              "sourceAddressPrefix": "[variables('vmSubnet')]",
+              "destinationPortRanges": [
+                "80",
+                "443"
+              ],
+              "sourcePortRange": "*",
+              "priority": 102
+            }
+          },
+          {
+            "name": "deny-in",
+            "properties": {
+              "access": "Deny",
+              "direction": "Inbound",
+              "protocol": "*",
+              "description": "Deny all inbound.",
+              "destinationAddressPrefix": "*",
+              "sourceAddressPrefix": "*",
+              "destinationPortRange": "*",
+              "sourcePortRange": "*",
+              "priority": 1000
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "[variables('networkApiVersion')]",
+      "name": "[format('{0}-pe-nsg', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "allow-appgw-subnet-in",
+            "properties": {
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "*",
+              "description": "Allow Application Gateway subnet inbound.",
+              "sourceAddressPrefix": "[variables('appGWSubnet')]",
+              "destinationAddressPrefix": "[variables('storagePESubnet')]",
+              "destinationPortRange": "443",
+              "sourcePortRange": "*",
+              "priority": 100
+            }
+          },
+          {
+            "name": "allow-slb-in",
+            "properties": {
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "*",
+              "description": "Allow SLB inbound.",
+              "destinationAddressPrefix": "*",
+              "sourceAddressPrefix": "AzureLoadBalancer",
+              "destinationPortRange": "*",
+              "sourcePortRange": "*",
+              "priority": 101
+            }
+          },
+          {
+            "name": "deny-all-in",
+            "properties": {
+              "access": "Deny",
+              "direction": "Inbound",
+              "protocol": "*",
+              "description": "Deny everything else inbound.",
+              "destinationAddressPrefix": "*",
+              "sourceAddressPrefix": "*",
+              "destinationPortRange": "*",
+              "sourcePortRange": "*",
+              "priority": 1000
+            }
+          },
+          {
+            "name": "deny-all-out",
+            "properties": {
+              "access": "Deny",
+              "direction": "Outbound",
+              "protocol": "*",
+              "description": "Deny everything else outbound.",
+              "destinationAddressPrefix": "*",
+              "sourceAddressPrefix": "*",
+              "destinationPortRange": "*",
+              "sourcePortRange": "*",
+              "priority": 1000
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "[variables('networkApiVersion')]",
+      "name": "[format('{0}-bastion-nsg', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "allow-https-inbound",
+            "properties": {
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "Tcp",
+              "description": "Allow ingress traffic from Allowed IP inbound.",
+              "priority": 100,
+              "sourceAddressPrefix": "[format('{0}/32', parameters('AllowedIP'))]",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "443"
+            }
+          },
+          {
+            "name": "allow-gwm-inbound",
+            "properties": {
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "Tcp",
+              "description": "Allow ingress traffic from Gateway Manager inbound.",
+              "priority": 101,
+              "sourceAddressPrefix": "GatewayManager",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "443"
+            }
+          },
+          {
+            "name": "allow-slb-inbound",
+            "properties": {
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "Tcp",
+              "description": "Allow ingress traffic from Load Balancer inbound.",
+              "priority": 102,
+              "sourceAddressPrefix": "AzureLoadBalancer",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "443"
+            }
+          },
+          {
+            "name": "allow-bastion-host-comm-inbound",
+            "properties": {
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "*",
+              "description": "Allow Bastion data plane inbound.",
+              "priority": 103,
+              "sourceAddressPrefix": "VirtualNetwork",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "VirtualNetwork",
+              "destinationPortRanges": [
+                "8080",
+                "5701"
+              ]
+            }
+          },
+          {
+            "name": "deny-all-in",
+            "properties": {
+              "access": "Deny",
+              "direction": "Inbound",
+              "protocol": "*",
+              "description": "Deny everything else inbound.",
+              "destinationAddressPrefix": "*",
+              "sourceAddressPrefix": "*",
+              "destinationPortRange": "*",
+              "sourcePortRange": "*",
+              "priority": 1000
+            }
+          },
+          {
+            "name": "allow-ssh-rdp-outbound",
+            "properties": {
+              "access": "Allow",
+              "direction": "Outbound",
+              "protocol": "*",
+              "description": "Allow SSH/RDP outbound.",
+              "priority": 100,
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "VirtualNetwork",
+              "destinationPortRanges": [
+                "22",
+                "3389"
+              ]
+            }
+          },
+          {
+            "name": "allow-cloud-outbound",
+            "properties": {
+              "access": "Allow",
+              "direction": "Outbound",
+              "protocol": "*",
+              "description": "Allow Azure Cloud outbound.",
+              "priority": 101,
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "AzureCloud",
+              "destinationPortRange": "443"
+            }
+          },
+          {
+            "name": "allow-bastion-host-comm-outbound",
+            "properties": {
+              "access": "Allow",
+              "direction": "Outbound",
+              "protocol": "*",
+              "description": "Allow Bastion data plane outbound.",
+              "priority": 102,
+              "sourceAddressPrefix": "VirtualNetwork",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "VirtualNetwork",
+              "destinationPortRanges": [
+                "8080",
+                "5701"
+              ]
+            }
+          },
+          {
+            "name": "allow-pki-outbound",
+            "properties": {
+              "access": "Allow",
+              "direction": "Outbound",
+              "protocol": "*",
+              "description": "Allow certificate validation traffic.",
+              "priority": 103,
+              "sourceAddressPrefix": "*",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "80"
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "[variables('networkApiVersion')]",
+      "name": "[format('{0}-vm-nsg', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "allow-bastion-subnet-in",
+            "properties": {
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "*",
+              "description": "Allow Bastion subnet inbound.",
+              "sourceAddressPrefix": "[variables('bastionSubnet')]",
+              "destinationAddressPrefix": "[variables('vmSubnet')]",
+              "destinationPortRanges": [
+                "3389",
+                "22"
+              ],
+              "sourcePortRange": "*",
+              "priority": 100
+            }
+          },
+          {
+            "name": "allow-slb-in",
+            "properties": {
+              "access": "Allow",
+              "direction": "Inbound",
+              "protocol": "*",
+              "description": "Allow SLB inbound.",
+              "destinationAddressPrefix": "*",
+              "sourceAddressPrefix": "AzureLoadBalancer",
+              "destinationPortRange": "*",
+              "sourcePortRange": "*",
+              "priority": 101
+            }
+          },
+          {
+            "name": "deny-all-in",
+            "properties": {
+              "access": "Deny",
+              "direction": "Inbound",
+              "protocol": "*",
+              "description": "Deny everything else inbound.",
+              "destinationAddressPrefix": "*",
+              "sourceAddressPrefix": "*",
+              "destinationPortRange": "*",
+              "sourcePortRange": "*",
+              "priority": 1000
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "[variables('networkApiVersion')]",
+      "name": "[format('{0}-vnet', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.0.0.0/22"
+          ]
+        },
+        "flowTimeoutInMinutes": 4,
+        "subnets": [
+          {
+            "name": "storage-pe-subnet",
+            "properties": {
+              "addressPrefix": "[variables('storagePESubnet')]",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-pe-nsg', parameters('StorageAccountName')))]"
+              },
+              "privateEndpointNetworkPolicies": "Disabled"
+            }
+          },
+          {
+            "name": "appgw-subnet",
+            "properties": {
+              "addressPrefix": "[variables('appGWSubnet')]",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-appgw-nsg', parameters('StorageAccountName')))]"
+              }
+            }
+          },
+          {
+            "name": "vm-subnet",
+            "properties": {
+              "addressPrefix": "[variables('vmSubnet')]",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-vm-nsg', parameters('StorageAccountName')))]"
+              }
+            }
+          },
+          {
+            "name": "AzureBastionSubnet",
+            "properties": {
+              "addressPrefix": "[variables('bastionSubnet')]",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-bastion-nsg', parameters('StorageAccountName')))]"
+              }
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-appgw-nsg', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-bastion-nsg', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-pe-nsg', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-vm-nsg', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "[variables('networkApiVersion')]",
+      "name": "[format('{0}-bastion-pip', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "sku": {
+        "name": "Standard"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Static"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "[variables('networkApiVersion')]",
+      "name": "[format('{0}-appgw-pip', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "sku": {
+        "name": "Standard"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Static"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/bastionHosts",
+      "apiVersion": "[variables('networkApiVersion')]",
+      "name": "[format('{0}-bastion', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ip-config",
+            "properties": {
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-bastion-pip', parameters('StorageAccountName')))]"
+              },
+              "subnet": {
+                "id": "[format('{0}/subnets/AzureBastionSubnet', resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('StorageAccountName'))))]"
+              }
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-bastion-pip', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2022-05-01",
+      "name": "[parameters('StorageAccountName')]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "kind": "StorageV2",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "properties": {
+        "allowBlobPublicAccess": true,
+        "isHnsEnabled": true,
+        "minimumTlsVersion": "TLS1_2",
+        "publicNetworkAccess": "Disabled",
+        "supportsHttpsTrafficOnly": true
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2020-10-01",
+      "name": "[format('{0}-enableStaticWebsite', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', parameters('StorageAccessManagedIdentityId'))]": {}
+        }
+      },
+      "kind": "AzurePowerShell",
+      "properties": {
+        "retentionInterval": "P1D",
+        "azPowerShellVersion": "3.0",
+        "arguments": "[format('-SubscriptionId \"{0}\" -ResourceGroupName \"{1}\" -StorageAccountName \"{2}\"', subscription().id, resourceGroup().name, parameters('StorageAccountName'))]",
+        "scriptContent": "      param (\r\n        [Parameter(Mandatory=$true)][String]$SubscriptionId,\r\n        [Parameter(Mandatory=$true)][String]$ResourceGroupName,\r\n        [Parameter(Mandatory=$true)][String]$StorageAccountName\r\n      )\r\n      \r\n      Start-Sleep -Seconds 5\r\n      Connect-AzAccount -Identity\r\n      Select-AzSubscription -Subscription $SubscriptionId\r\n      $storageAccount = Get-AzStorageAccount -ResourceGroupName $ResourceGroupName -AccountName $StorageAccountName\r\n      $ctx = $storageAccount.Context\r\n      Enable-AzStorageStaticWebsite -Context $ctx\r\n\r\n    "
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', parameters('StorageAccountName'))]"
+      ]
+    },
+    {
+      "copy": {
+        "name": "StoragePE",
+        "count": "[length(variables('storagePEGroupIDs'))]"
+      },
+      "type": "Microsoft.Network/privateEndpoints",
+      "apiVersion": "[variables('networkApiVersion')]",
+      "name": "[format('{0}-pe-{1}', parameters('StorageAccountName'), variables('storagePEGroupIDs')[copyIndex()])]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "subnet": {
+          "id": "[format('{0}/subnets/storage-pe-subnet', resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('StorageAccountName'))))]"
+        },
+        "privateLinkServiceConnections": [
+          {
+            "name": "[format('{0}-pe', parameters('StorageAccountName'))]",
+            "properties": {
+              "privateLinkServiceId": "[resourceId('Microsoft.Storage/storageAccounts', parameters('StorageAccountName'))]",
+              "groupIds": [
+                "[variables('storagePEGroupIDs')[copyIndex()]]"
+              ]
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-enableStaticWebsite', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', parameters('StorageAccountName'))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "copy": {
+        "name": "PrivateDNSZones",
+        "count": "[length(variables('storagePEGroupIDs'))]"
+      },
+      "type": "Microsoft.Network/privateDnsZones",
+      "apiVersion": "[variables('networkApiVersionPDNS')]",
+      "name": "[format('privatelink.{0}.{1}', variables('storagePEGroupIDs')[copyIndex()], environment().suffixes.storage)]",
+      "location": "global",
+      "tags": "[variables('tags')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-enableStaticWebsite', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "copy": {
+        "name": "PrivateDNSZoneLink",
+        "count": "[length(variables('storagePEGroupIDs'))]"
+      },
+      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+      "apiVersion": "[variables('networkApiVersionPDNS')]",
+      "name": "[format('privatelink.{0}.{1}/vnet-link', variables('storagePEGroupIDs')[copyIndex()], environment().suffixes.storage)]",
+      "location": "global",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "registrationEnabled": false,
+        "virtualNetwork": {
+          "id": "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('StorageAccountName')))]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.{0}.{1}', variables('storagePEGroupIDs')[copyIndex()], environment().suffixes.storage))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-enableStaticWebsite', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "copy": {
+        "name": "StoragePEDNSGroup",
+        "count": "[length(variables('storagePEGroupIDs'))]"
+      },
+      "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+      "apiVersion": "[variables('networkApiVersion')]",
+      "name": "[format('{0}/dns-groups', format('{0}-pe-{1}', parameters('StorageAccountName'), variables('storagePEGroupIDs')[copyIndex()]))]",
+      "properties": {
+        "privateDnsZoneConfigs": [
+          {
+            "name": "[format('config-{0}', variables('storagePEGroupIDs')[copyIndex()])]",
+            "properties": {
+              "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.{0}.{1}', variables('storagePEGroupIDs')[copyIndex()], environment().suffixes.storage))]"
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateDnsZones', format('privatelink.{0}.{1}', variables('storagePEGroupIDs')[copyIndex()], environment().suffixes.storage))]",
+        "[resourceId('Microsoft.Network/privateEndpoints', format('{0}-pe-{1}', parameters('StorageAccountName'), variables('storagePEGroupIDs')[copyIndex()]))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "[variables('networkApiVersion')]",
+      "name": "[format('{0}-jb-nic', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ip-config",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[format('{0}/subnets/vm-subnet', resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('StorageAccountName'))))]"
+              }
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "[variables('computeApiVersion')]",
+      "name": "[format('{0}-jb', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "Standard_A1"
+        },
+        "osProfile": {
+          "computerName": "jumpbox",
+          "adminPassword": "[parameters('JumpboxPassword')]",
+          "adminUsername": "[parameters('JumpboxUsername')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "Canonical",
+            "offer": "UbuntuServer",
+            "sku": "18.04-lts",
+            "version": "latest"
+          },
+          "osDisk": {
+            "name": "[format('{0}-osdisk', parameters('StorageAccountName'))]",
+            "createOption": "FromImage",
+            "caching": "ReadWrite",
+            "managedDisk": {
+              "storageAccountType": "StandardSSD_LRS"
+            },
+            "diskSizeGB": 128
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-jb-nic', parameters('StorageAccountName')))]"
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-jb-nic', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/privateDnsZones",
+      "apiVersion": "[variables('networkApiVersionPDNS')]",
+      "name": "contoso.com",
+      "location": "global",
+      "tags": "[variables('tags')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "copy": {
+        "name": "ContosoPrivateDnsARecords",
+        "count": "[length(variables('storagePEGroupIDs'))]"
+      },
+      "type": "Microsoft.Network/privateDnsZones/A",
+      "apiVersion": "[variables('networkApiVersionPDNS')]",
+      "name": "[format('{0}/{1}', 'contoso.com', variables('storagePEGroupIDs')[copyIndex()])]",
+      "properties": {
+        "ttl": 3600,
+        "aRecords": [
+          {
+            "ipv4Address": "[variables('appGWInternalIP')]"
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateDnsZones', 'contoso.com')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+      "apiVersion": "[variables('networkApiVersionPDNS')]",
+      "name": "[format('{0}/vnet-link', 'contoso.com')]",
+      "location": "global",
+      "tags": "[variables('tags')]",
+      "properties": {
+        "registrationEnabled": true,
+        "virtualNetwork": {
+          "id": "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('StorageAccountName')))]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateDnsZones', 'contoso.com')]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Network/applicationGateways",
+      "apiVersion": "[variables('networkApiVersion')]",
+      "name": "[format('{0}-appgw', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[format('{0}', parameters('KeyVaultManagedIdentityId'))]": {}
+        }
+      },
+      "properties": {
+        "copy": [
+          {
+            "name": "redirectConfigurations",
+            "count": "[length(variables('storagePEGroupIDs'))]",
+            "input": {
+              "name": "[format('http-to-https-{0}', variables('storagePEGroupIDs')[copyIndex('redirectConfigurations')])]",
+              "properties": {
+                "includePath": true,
+                "includeQueryString": true,
+                "redirectType": "Permanent",
+                "targetListener": {
+                  "id": "[resourceId('Microsoft.Network/applicationGateways/httpListeners', format('{0}-appgw', parameters('StorageAccountName')), format('https-listener-{0}', variables('storagePEGroupIDs')[copyIndex('redirectConfigurations')]))]"
+                }
+              }
+            }
+          },
+          {
+            "name": "backendAddressPools",
+            "count": "[length(variables('storagePEGroupIDs'))]",
+            "input": {
+              "name": "[format('backend-pool-{0}', variables('storagePEGroupIDs')[copyIndex('backendAddressPools')])]",
+              "properties": {
+                "backendAddresses": [
+                  {
+                    "fqdn": "[replace(replace(replace(reference(resourceId('Microsoft.Storage/storageAccounts', parameters('StorageAccountName'))).primaryEndpoints[variables('storagePEGroupIDs')[copyIndex('backendAddressPools')]], 'https://', ''), 'http://', ''), '/', '')]"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": "probes",
+            "count": "[length(variables('storagePEGroupIDs'))]",
+            "input": {
+              "name": "[format('storage-probe-{0}', variables('storagePEGroupIDs')[copyIndex('probes')])]",
+              "properties": {
+                "interval": 30,
+                "pickHostNameFromBackendHttpSettings": true,
+                "port": 443,
+                "protocol": "Https",
+                "timeout": 30,
+                "unhealthyThreshold": 3,
+                "path": "/",
+                "match": {
+                  "statusCodes": [
+                    "400-499"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "name": "backendHttpSettingsCollection",
+            "count": "[length(variables('storagePEGroupIDs'))]",
+            "input": {
+              "name": "[format('backend-settings-{0}', variables('storagePEGroupIDs')[copyIndex('backendHttpSettingsCollection')])]",
+              "properties": {
+                "pickHostNameFromBackendAddress": true,
+                "port": 443,
+                "probe": {
+                  "id": "[resourceId('Microsoft.Network/applicationGateways/probes', format('{0}-appgw', parameters('StorageAccountName')), format('storage-probe-{0}', variables('storagePEGroupIDs')[copyIndex('backendHttpSettingsCollection')]))]"
+                },
+                "protocol": "Https",
+                "cookieBasedAffinity": "Disabled",
+                "requestTimeout": 230
+              }
+            }
+          }
+        ],
+        "sku": {
+          "capacity": 2,
+          "name": "Standard_v2",
+          "tier": "Standard_v2"
+        },
+        "gatewayIPConfigurations": [
+          {
+            "name": "ip-config",
+            "properties": {
+              "subnet": {
+                "id": "[format('{0}/subnets/appgw-subnet', resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('StorageAccountName'))))]"
+              }
+            }
+          }
+        ],
+        "frontendPorts": [
+          {
+            "name": "frontend-port-80",
+            "properties": {
+              "port": 80
+            }
+          },
+          {
+            "name": "frontend-port-443",
+            "properties": {
+              "port": 443
+            }
+          }
+        ],
+        "frontendIPConfigurations": [
+          {
+            "name": "frontend-ip",
+            "properties": {
+              "privateIPAllocationMethod": "Static",
+              "privateIPAddress": "[variables('appGWInternalIP')]",
+              "subnet": {
+                "id": "[format('{0}/subnets/appgw-subnet', resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('StorageAccountName'))))]"
+              }
+            }
+          },
+          {
+            "name": "frontend-ip-public",
+            "properties": {
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-appgw-pip', parameters('StorageAccountName')))]"
+              }
+            }
+          }
+        ],
+        "sslCertificates": [
+          {
+            "name": "ssl-cert",
+            "properties": {
+              "keyVaultSecretId": "[parameters('SSLSecretURL')]"
+            }
+          }
+        ],
+        "httpListeners": "[variables('allHttpListeners')]",
+        "sslPolicy": {
+          "disabledSslProtocols": [
+            "TLSv1_0",
+            "TLSv1_1"
+          ]
+        },
+        "requestRoutingRules": "[variables('allRoutingRules')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-appgw-pip', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Network/privateDnsZones', 'contoso.com')]",
+        "ContosoPrivateDnsARecords",
+        "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', split(format('{0}/vnet-link', 'contoso.com'), '/')[0], split(format('{0}/vnet-link', 'contoso.com'), '/')[1])]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-enableStaticWebsite', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', parameters('StorageAccountName'))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('StorageAccountName')))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2020-10-01",
+      "name": "[format('{0}-trackEventEnd', parameters('StorageAccountName'))]",
+      "location": "[parameters('Location')]",
+      "tags": "[variables('tags')]",
+      "kind": "AzurePowerShell",
+      "properties": {
+        "retentionInterval": "P1D",
+        "azPowerShellVersion": "3.0",
+        "arguments": "[format('-correlationId \"{0}\"', variables('correlationId'))]",
+        "scriptContent": "      param (\r\n        [Guid]$correlationId\r\n      )\r\n      $iKey = (Invoke-RestMethod -UseBasicParsing -Uri https://raw.githubusercontent.com/milope/azuretools/master/api/appinsights/instrumentationKey).InstrumentationKey\r\n      $EventName = \"Template deployment completed.\"\r\n      $CustomProperties = @{Type=\"Template\";Category=\"Azure Storage\";Name=\"Azure Storage Custom Domain HTTPS\";CorrelationId=$correlationId}\r\n      $AuthUserID = [String]::Empty\r\n      if(-not [String]::IsNullOrEmpty($env:USERDOMAIN) -and $env:USERDOMAIN.Length -gt 0) {\r\n        $AuthUserID = \"$($env:USERDOMAIN)\\$($env:USERNAME)\"\r\n      }\r\n      else {\r\n        $AuthUserID = $env:USERNAME\r\n      }\r\n      $body = (@{\r\n          name = \"Microsoft.ApplicationInsights.$iKey.Event\"\r\n          time = [DateTime]::UtcNow.ToString(\"o\")\r\n          iKey = $iKey\r\n          tags = @{\r\n              \"ai.device.id\" = $env:COMPUTERNAME\r\n              \"ai.device.locale\" = $env:USERDOMAIN\r\n              \"ai.user.id\" = $env:USERNAME\r\n              \"ai.user.authUserId\" = $AuthUserID\r\n              \"ai.cloud.roleInstance\" = $env:COMPUTERNAME\r\n          }\r\n          \"data\" = @{\r\n              baseType = \"EventData\"\r\n              baseData = @{\r\n                  ver = \"2\"\r\n                  name = $EventName\r\n                  properties = ($CustomProperties | ConvertTo-Json -Depth 10 | ConvertFrom-Json)\r\n              }\r\n          }\r\n      }) | ConvertTo-Json -Depth 10 -Compress\r\n      $appInsightsEndpoint = \"https://dc.services.visualstudio.com/v2/track\"    \r\n      $temp = $ProgressPreference\r\n      $ProgressPreference = \"SilentlyContinue\"\r\n      try {\r\n        Invoke-WebRequest -Method POST -Uri $appInsightsEndpoint -Headers @{\"Content-Type\"=\"application/x-json-stream\"} -Body $body -TimeoutSec 3 | Out-Null\r\n      }\r\n      catch {}\r\n      finally {\r\n        $ProgressPreference = $temp\r\n      }\r\n    "
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/applicationGateways', format('{0}-appgw', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-appgw-nsg', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-appgw-pip', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-bastion-nsg', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', format('{0}-bastion-pip', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Network/privateDnsZones', 'contoso.com')]",
+        "ContosoPrivateDnsARecords",
+        "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', split(format('{0}/vnet-link', 'contoso.com'), '/')[0], split(format('{0}/vnet-link', 'contoso.com'), '/')[1])]",
+        "[resourceId('Microsoft.Compute/virtualMachines', format('{0}-jb', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-jb-nic', parameters('StorageAccountName')))]",
+        "PrivateDNSZoneLink",
+        "PrivateDNSZones",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-enableStaticWebsite', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Storage/storageAccounts', parameters('StorageAccountName'))]",
+        "StoragePE",
+        "StoragePEDNSGroup",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-pe-nsg', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Resources/deploymentScripts', format('{0}-trackEventStart', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', format('{0}-vm-nsg', parameters('StorageAccountName')))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', format('{0}-vnet', parameters('StorageAccountName')))]"
+      ]
+    }
+  ]
+}
