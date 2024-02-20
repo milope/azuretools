@@ -1155,7 +1155,7 @@ function Send-HttpProbe {
         #Test 3: SSL Handshake
 
         if ($UseSSL.IsPresent -and $UseSSL) {
-            $sslHost = $Hostname
+            $sslHost = $HttpHost
             if ($NoSNI.IsPresent -and $NoSNI) {
                 $sslHost = $ip.ToString()
             }
