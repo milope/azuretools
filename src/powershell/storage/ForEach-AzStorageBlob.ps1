@@ -216,7 +216,7 @@ function ForEach-AzStorageBlob {
 
             $ProgressParameters = @{
                 Activity = "ForEach-AzStorageBlob -"
-                Status = "Number of blobs iterated: $BlobCount. Elapsed time: $($stopWatch.Elapsed.ToString()). Last blob iterated: $($Blobs[-1].Name)."
+                Status = "Number of blobs iterated: $BlobCount. Elapsed time: $($stopWatch.Elapsed.ToString())."
                 CurrentOperation = "Processing Blobs"
             }
             Write-Progress @ProgressParameters
