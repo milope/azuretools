@@ -420,7 +420,7 @@ function Get-AzUserDelegationSasUrl {
             $urlParams.Add("skv=$skv")
             if(-not [String]::IsNullOrEmpty($saoid)) { $urlParams.Add("saoid=$saoid") }
             if(-not [String]::IsNullOrEmpty($suoid)) { $urlParams.Add("skt=$suoid") }
-            if(-not [String]::IsNullOrEmpty($scid)) { $urlParams.Add("skt=$scid") }
+            if(-not [String]::IsNullOrEmpty($scid)) { $urlParams.Add("scid=$scid") }
             if(-not [String]::IsNullOrEmpty($sdd)) { $urlParams.Add("sdd=$sdd") }
             if(-not [String]::IsNullOrEmpty($ses)) { $urlParams.Add("ses=$ses") }
             $urlParams.Add("sig=$sig")
