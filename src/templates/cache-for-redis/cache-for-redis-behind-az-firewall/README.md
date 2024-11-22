@@ -2,173 +2,170 @@
 
 The following is the final template after this research was completed.
 
-[![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2fazureDeploy.json)
-[![Deploy To Azure US Gov](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazuregov.svg?sanitize=true)](https://portal.azure.us/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2fazureDeploy.json)
-[![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2fazureDeploy.json)
+[![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2f03.final.json)
+[![Deploy To Azure US Gov](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazuregov.svg?sanitize=true)](https://portal.azure.us/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2f03.final.json)
+[![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2f03.final.json)
 
 ## Summary
 
-One of the most frequently wondered things I always wonder and get asked about is "what IPs or hostnames do we need to open for [insert Azure Service here]?". This article provides an approach to finding and documenting this dependency information out if the Azure service in question can join an Azure Virtual Network. The general idea is to deploy the Azure resource behind an Azure Firewall and to ensure the Azure Firewall has at least one (1) application rule in its firewall policy or rules. By adding the single application rule, it will check for SNI and hostnames for most connections. We can proceed to dump the firewall logs in Log Analytics and begin the analysis to investigate which outbound dependencies an Azure service may have. I prefer to divide the research into 2 categories: The minimal required dependencies to successfully deploy the service and the rest of the required dependencies.
+One of the questions I get asked and ask myself often is _what IP or hostnames do we need to open for `insert Azure Service here`?. This article providers an approach to discovering these dependencies as long as the service can join an Azure virtual network.
 
-I will test this method today against Azure Cache for Redis. The first iteration of the template deployment will place Azure Cache for Redis in a Virtual Network with the most restrictive NSGs possible with its subnet pointing traffic to an Azure Firewall via a default Azure Route Table route. The Azure Firewall will have its logs being sent to Log Analytics and will only include an application rule for 'www.microsoft.com:80'. The deployment is expected to fail as Cache For Redis will not be able to reach out to its dependencies, however this will allow us to identify which dependencies are needed to successfully deploy Azure Cache for Redis by using the Azure Firewall logs that are being sent to Log Analytics.
+The gist of this tactic is the following:
 
-## Parameters
+- Deploy a hub and spoke virtual network
+- Host Azure Firewall in the hub network
+- Setup the Azure Firewall diagnostic settings to push logs to Log Analytics
+- Peer both virtual networks
+- Setup a default route on the spoke virtual network to direct all non-specific traffic through Azure Firewall
+- Attempt to deploy the service being investigated
 
-- **ResourcePrefix**: Used as a prefix for resource naming.
-- **MyIP**: Used to open your public IP through Network Security Groups.
-- **RedisVNetAddressRange**: Used to specify the address range for the Cache for Redis Virtual Network.
-- **HubVNetAddressRange**:  Used to specify the address range for the hub Virtual Network.
+Initially, deployment will fail as all dependencies are blocked, but as the dependencies are added and the dependencies are slowly added to the allowed lists, the deployment will succeed. There will be additional dependencies until the entries end.
+
+> [!IMPORTANT NOTE] This article <span style="color:red">**does not**</span> act as a substitution to official Microsoft documentation as there may be use-cases that are missed.
+
+## Template Parameters
+
+| Name               | Type     | Required | Default                   | Description                                         |
+|--------------------|----------|----------|---------------------------|-----------------------------------------------------|
+| `Location`         | `string` | No       | Resource Group's location | Specified the location for all the resources        |
+| `CacheName`        | `string` | Yes      | None                      | Cache for Redis resource name and Resource Prefix   |
+| `FirewallDnsLabel` | `string` | Yes      | None                      | Specify the public DNS label for the Azure Firewall |
+| `SpokeIPRange`     | `string` | No       | `10.0.0.0/24`             | Specify an address range for the spoke network      |
+| `HubIPRange`       | `string` | No       | `10.0.1.0/24`             | Specify an address range for the hub network        |
 
 ## Resources Deployed
 
-Let's start with the first template. We will have the following resource:
+All templates will contain the following resources:
 
-- One (1) Azure Storage Account to store Network Security Group Flow Logs.
-- One (1) Azure Log Analytics Workspace to store desired logs, such as Azure Firewall firewall logs.
-- One (1) Azure Network Security Groups for the Cache for Redis subnet.
-- One (1) Azure Public IP Addresses for the Azure Firewall.
-- One (1) Azure Network Watcher resource to enable two (2) Network Security Group Flow Logs.
-- Two (2) Azure Virtual Networks: One for Cache for Redis and the other being a hub Virtual Network for Azure Firewall.
-- Two (2) Azure Virtual Network Peerings to connect the Redis and the hub Virtual Network.
-- One (1) Azure Firewall Policy to create a default application rule and a collection of rule groups that will eventually be the Cache for Redis rules.
-- One (1) Azure Firewall to control traffic and send the firewall logs to Azure Log Analytics.
-- One (1) Azure Route Table to force tunnel connections from the Cache for Redis subnet to the Azure Firewall.
-- One (1) Azure Cache for Redis in Premium SKU to be able to join the VNET.
-- Two (2) Azure Monitor Diagnostic Settings: One for Azure Firewall and one for Azure Cache for Redis
+| Resource                 | Quantity | Purpose                                                                 |
+|--------------------------|----------|-------------------------------------------------------------------------|
+| Public IP Address        |        1 | Azure Firewall's public IP                                              |
+| Log Analytics Workspace  |        1 | Stores the Firewall's diagnostic logs                                   |
+| Network Security Group   |        1 | No security rules are added                                             |
+| Virtual Networks         |        2 | Hub and spoke virtual networks                                          |
+| Virtual Network Peerings |        2 | To interconnect the hub and spoke                                       |
+| GitHub Rule Collection   |        1 | This is to force SNI output in the diagnostic logs                      |
+| Empty Rule Collection    |        1 | This will be used to slowly add the discovered dependencies             |
+| Azure Firewall           |        1 | Resource that will be performing the deny and logging dependencies      |
+| Diagnostic Settings      |        1 | Diagnostic settings on the Firewall to log dependencies                 |
+| Route Table              |        1 | Forces all non-specific outbound traffic through the Firewall           |
+| Cache for Redis          |        1 | Cache for Redis on the blocked virtual network to discover dependencies |
 
 ## Initial Locked Down Template
 
-Here is the initial fully locked down template before the correct rules are added to Azure Firewall (azureDeploy.initial.json or azureDeploy.initial.bicep):
+Here is the initial fully locked down template before the correct rules are added to Azure Firewall `01.initial.bicep` or `01.initial.json`:
 
-[![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2fazureDeploy.initial.json)
-[![Deploy To Azure US Gov](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazuregov.svg?sanitize=true)](https://portal.azure.us/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2fazureDeploy.initial.json)
-[![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2fazureDeploy.initial.json)
+[![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2f01.initial.json)
+[![Deploy To Azure US Gov](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazuregov.svg?sanitize=true)](https://portal.azure.us/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2f01.initial.json)
+[![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2f01.initial.json)
 
 The expectation here is that the Cache for Redis will fail as it will not be able to start the service. In the meantime, Azure Firewall will be logging all its deny firewall logs in Log Analytics. Unfortunately, we will definitely not get an exhaustive list right away. We will have to continue to log deny entries and allow them until Cache for Redis successfully deploys. Here is the first attempt:
 
 ![Resource Deployment](image-001.png)
 
-Log Analtytics Azure Firewall Rules query to search for deny entries:
+Log Analtytics Azure Firewall Rules query to search for dependencies and their latest action (`Allow` or `Deny`):
 
 ```kql
-let latestNewDeploymentStartTime = datetime(2022-01-25 16:15);
-let redisSubnetStart = '10.0.1';
-let allowed = (
-    AzureDiagnostics
-    | where TimeGenerated > latestNewDeploymentStartTime
-    | where Category in ("AzureFirewallApplicationRule", "AzureFirewallNetworkRule")
-    | where msg_s !contains "Deny"
-    | extend
-        Protocol = extract("^([a-zA-Z]+) (?: )?request", 1, msg_s),
-        Source = extract("request from (.*:\\d{1,5}) to", 1, msg_s),
-        Destination = extract("request from (.*:\\d{1,5}) to (.*:\\d{1,5})", 2, msg_s),
-        Action = extract("Action:\\s(Allow|Deny)\\.", 1, msg_s)
-    | project TimeGenerated, msg_s, Protocol, Source, Destination, Action
-    | where Source startswith redisSubnetStart
-    | summarize FirstTimeAllowed=min(TimeGenerated), LastTimeAllowed=max(TimeGenerated), TotalAllows=count() by Destination
-    | project Destination, FirstTimeAllowed, TotalAllows, LastTimeAllowed
+let tApplicationRules = (
+    AZFWApplicationRule
+    | extend SourceIp = iif(ipv4_is_in_range(SourceIp, '10.0.0.0/24'), "RedisSubnet", SourceIp)
+    | summarize TimeGenerated=arg_max(TimeGenerated, *) by Protocol, Fqdn, SourceIp, DestinationPort, TargetUrl
+    | project TimeGenerated, Protocol, SourceIp, Destination=Fqdn, DestinationPort, TargetUrl, Action
 );
-let denies = (AzureDiagnostics
-| where TimeGenerated > latestNewDeploymentStartTime
-| where Category in ("AzureFirewallApplicationRule", "AzureFirewallNetworkRule")
-| where msg_s contains "Deny"
-| extend
-    Protocol = extract("^([a-zA-Z]+) (?: )?request", 1, msg_s),
-    Source = extract("request from (.*:\\d{1,5}) to", 1, msg_s),
-    Destination = extract("request from (.*:\\d{1,5}) to (.*:\\d{1,5})", 2, msg_s),
-    Action = extract("Action:\\s(Allow|Deny)\\.", 1, msg_s)
-| project TimeGenerated, msg_s, Protocol, Source, Destination, Action
-| where Source startswith redisSubnetStart
-| extend Source = substring(Source, 0, indexof(Source, ':'))
-| summarize FirstGenerated=min(TimeGenerated), LastTimeDenied=max(TimeGenerated), TotalDenies=count() by Protocol, Destination
-| join kind=leftouter (
-    allowed
-) on Destination
-| project-away Destination1
-| order by FirstGenerated desc);
-union allowed, denies
-| extend NotUsedSince= datetime_diff('minute', now(), iif(isnull(LastTimeDenied), LastTimeAllowed, LastTimeDenied))
+let tNetworkRules = (
+    AZFWNetworkRule
+    | extend SourceIp = iif(ipv4_is_in_range(SourceIp, '10.0.0.0/24'), "RedisSubnet", SourceIp)
+    | summarize TimeGenerated=arg_max(TimeGenerated, *) by Protocol, DestinationIp, DestinationPort
+    | project TimeGenerated, Protocol, SourceIp, Destination=DestinationIp, DestinationPort, TargetUrl='', Action
+);
+union tApplicationRules, tNetworkRules
 ```
 
-![Firewall Query Results](image-002.png)
+![Firewall Query Results](image-003.png)
 
 Now that we are observing the list of deny entries, I will begin updating the template to add network or application rules to the Azure Firewall Policy until I allow all enough endpoints for the Cache for Redis service to finish deploying. Ultimately, the observation was that the following endpoints were needed before Azure Cache for Redis deployed successfully. Please note this list may not be exahustive and is subject to change as time goes by.
 
-- Azure Storage:
-  - *.blob.core.windows.net
-  - *.table.core.windows.net
-  - *.queue.core.windows.net
-- Azure PKI:
-  - ocsp.digicert.com
-  - crl4.digicert.com
-  - ocsp.msocsp.com
-  - mscrl.microsoft.com
-  - crl3.digicert.com
-  - cacerts.digicert.com
-  - oneocsp.microsoft.com
+- Windows Dependencies:
+  - go.microsoft.com
+  - settings-win.data.microosft.com
+  - *.update.microsoft.com
+  - *.events.data.microsoft.com
+  - ctldl.windowsupdate.com
   - crl.microsoft.com
+  - www.msftconnecttest.com
+  - definitionupdates.microsoft.com
+  - *.delivery.mp.microsoft.com
+  - validation-v2.sls.microsoft.com
+- Antivirus Dependencies:
+  - wdcp.microsoft.com
+  - wdcpalt.microsoft.com
+- Azure Monitor:
+  - gcs.prod.monitoring.`{monitorEndpointSuffix}`
+  - *.prod.warm.ingest.monitor
+- Azure Storage:
+  - *.blob.`{storageEndpointSuffix}`
+  - *.queue.`{storageEndpointSuffix}`
 - Azure Key Vault:
-  - *.vault.azure.net
+  - *.`{keyvaultEndpointSuffix}`
 
-I highly recommend the rules with a wildcard stay as such as the Storage and Key Vault endpoints can have unique name per service. Below is the template that allowed Cache for Redis to deploy successfully (azureDeploy.deployment.json or azureDeployment.deployment.bicep):
+I highly recommend the rules with a wildcard stay as such as the Storage and Key Vault endpoints can have unique name per service. Below is the template that allowed Cache for Redis to deploy successfully (`02.deployment.bicep` or `02.deployment.json`):
 
-[![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2fazureDeploy.deployment.json)
-[![Deploy To Azure US Gov](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazuregov.svg?sanitize=true)](https://portal.azure.us/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2fazureDeploy.deployment.json)
-[![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2fazureDeploy.deployment.json)
+[![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2f02.deployment.json)
+[![Deploy To Azure US Gov](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazuregov.svg?sanitize=true)](https://portal.azure.us/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2f02.deployment.json)
+[![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2f02.deployment.json)
 
 Following a successful deployment, we continue to monitor any other outbound connection from the Cache for Redis. The following dependencies were observed. Please note this list is not exhaustive. Also, checkpoints with a question mark '?' indicate that I was not entirely sure what it was for following some research on public documentation available.
 
-| Endpoint | Usage |
-|----------|-------|
-| 104.43.210.62:12000 | Azure Monitor |
-| 23.102.135.246:1688 | Windows KMS |
-| 40.119.6.228:123 | Windows NTP? |
-| 40.122.160.17:12000 | Azure Monitor |
-| au.download.windowsupdate.com:80 | Windows Update |
-| azredis.prod.microsoftmetrics.com:443 | Azure Monitor |
-| azredis-black.prod.microsoftmetrics.com:443 | Azure Monitor |
-| azredis-red.prod.microsoftmetrics.com:443 | Azure Monitor |
-| azureprofilerfrontdoor.cloudapp.net:443 | Azure Monitoring |
-| azurewatsonanalysis-prod.core.windows.net:443 | Azure Monitoring |
-| clientconfig.passport.net:443 | Microsoft Store for Business and Education |
-| cp601.prod.do.dsp.mp.microsoft.com:443 | Windows Update |
-| ctldl.windowsupdate.com:80 | Root Certificate Update |
-| dmd.metaservices.microsoft.com:80 | Device Metadata |
-| download.windowsupdate.com:80 | Windows Update |
-| emdl.ws.microsoft.com:80 | Windows Update |
-| fe2.update.microsoft.com:443 | Windows Update |
-| fe3.delivery.mp.microsoft.com:443 | Windows Update |
-| gcs.prod.monitoring.core.windows.net:443 | Azure Monitor |
-| geo-prod.do.dsp.mp.microsoft.com:443 | Windows Update |
-| global.prod.microsoftmetrics.com:443 | Azure Monitor |
-| go.microsoft.com:443 | Windows Activation |
-| go.microsoft.com:80 | Windows Activation |
-| *.servicebus.windows.net:443 | Azure Event Hubs |
-| kv601.prod.do.dsp.mp.microsoft.com:443 | Windows Update |
-| login.live.com:443 | Windows Device Authentication |
-| md-ssd-bnz51ttstspj.z14.blob.storage.azure.net:443 | Azure Dependency? |
-| md-ssd-shqv3ggz0v3w.z9.blob.storage.azure.net:443 | Azure Dependency? |
-| qos.prod.warm.ingest.monitor.core.windows.net:443 | Azure Monitor |
-| settings-win.data.microsoft.com:443 | Setting Updates |
-| shavamanifestazurecdnprod1.azureedge.net:443 | Azure Monitoring
-| sls.update.microsoft.com:443 | Windows Device Auto-update |
-| southcentralus-shared.prod.warm.ingest.monitor.core.windows.net:443 | Azure Monitor |
-| v10.events.data.microsoft.com:443 | Diagnostic Data |
-| validation-v2.sls.microsoft.com:443 | Activation |
-| wdcp.microsoft.com:443 | Antivirus |
-| www.msftconnecttest.com:80 | NCSI |
+| Protocol | Destination Host | Destination Port | Usage |
+|----------|------------------|------------------|-------|
+| HTTPS | *.blob.core.windows.net | 443 | Azure Storage Dependency |
+| HTTPS | *.table.core.windows.net | 443 | Azure Storage Dependency |
+| HTTPS | *.queue.core.windows.net | 443 | Azure Storage Dependency |
+| HTTPS | *.file.core.windows.net | 443 | Azure Storage Dependency |
+| HTTPS | *.vault.azure.net | 443 | Azure Key Vault Dependency |
+| HTTPS | *.prod.warm.ingest.monitor.core.windows.net | 443 | Azure Monitor |
+| HTTPS | azredis-black.prod.microsoftmetrics.com | 443 | Azure Monitor |
+| HTTPS | azredis-red.prod.microsoftmetrics.com | 443 | Azure Monitor |
+| HTTPS | gcs.prod.monitoring.core.windows.net | 443 | Azure Monitor |
+| HTTPS | global.prod.microsoftmetrics.com | 443 | Azure Monitor |
+| HTTPS | azredis.prod.microsoftmetrics.com | 443 | Azure Monitor |
+| HTTPS | shavamanifestazurecdnprod1.azureedge.net | 443 | Azure Monitor |
+| HTTPS | shavamanifestcdnprod1.azureedge.net | 443 | Azure Monitor |
+| HTTPS | azurewatsonanalysis-prod.core.windows.net | 443 | Azure Monitor |
+| TCP | `AzureMonitor`.`RegionName` | 12000 | Azure Monitor |
+| HTTP/1.1 | ctldl.windowsupdate.com | 80 | Windows PKI |
+| HTTP/1.1 | crl.microsoft.com | 80 | Azure PKI |
+| HTTP/1.1 | crl.microsoft.com | 80 | Azure PKI |
+| HTTP/1.1 | ocsp.digicert.com | 80 | Azure PKI |
+| HTTP/1.1 | crl3.digicert.com | 80 | Azure PKI |
+| HTTP/1.1 | ocsp.digicert.com | 80 | Azure PKI |
+| HTTP/1.1 | oneocsp.microsoft.com | 80 | Azure PKI |
+| HTTPS | www.microsoft.com | 443 | Azure PKI |
+| HTTPS | *.events.data.microsoft.com | 443 | Windows Telemetry |
+| HTTP/1.1 | www.msftconnecttest.com | 80 | Network Connectivity Test |
+| HTTPS | settings-win.data.microsoft.com | 443 | Settings Update |
+| HTTPS | *.update.microsoft.com | 443 | Windows Update |
+| HTTPS | go.microsoft.com | 443 | Windows Activation |
+| HTTPS | validation-v2.sls.microsoft.com | 443 | Windows Activation |
+| HTTPS | *.delivery.mp.microsoft.com | 443 | Windows Update |
+| HTTPS | definitionupdates.microsoft.com | 443 | Antivirus Dependency |
+| HTTPS | wdcp.microsoft.com | 443 | Antivirus Dependency |
+| HTTPS | wdcpalt.microsoft.com | 443 | Antivirus Dependency |
+| HTTPS | *.servicebus.windows.net | 443 | Service Bus Dependency |
+| UDP | `AzureCloud`.`RegionName` | 123 | Windows NTP |
+| TCP | `AzureCloud`.`RegionName` | 1688 | Windows KMS |
 
-In the end, the following ended up being my final template. However, based on documentation used to discover some of these endpoints, it is likely this template still does not cover all possible dependencies (azureDeploy.json or azureDeploy.bicep).
+In the end, the following ended up being my final template. However, based on documentation used to discover some of these endpoints, it is likely this template still does not cover all possible dependencies (`03.final.bicep` or `03.final.json`).
 
-[![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2fazureDeploy.json)
-[![Deploy To Azure US Gov](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazuregov.svg?sanitize=true)](https://portal.azure.us/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2fazureDeploy.json)
-[![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2fazureDeploy.json)
+[![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2f03.final.json)
+[![Deploy To Azure US Gov](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazuregov.svg?sanitize=true)](https://portal.azure.us/#create/Microsoft.Template/uri/https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2f03.final.json)
+[![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3a%2f%2fraw.githubusercontent.com%2fmilope%2fazuretools%2fmaster%2fsrc%2ftemplates%2fcache-for-redis%2fcache-for-redis-behind-az-firewall%2f03.final.json)
 
 ## License/Disclaimer
 
 ---
 
-Copyright © 2022 Michael Lopez
+Copyright © 2022-2024 Michael Lopez
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the “Software”), to deal in
